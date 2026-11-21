@@ -20,7 +20,6 @@ use anyhow::{Context as _, Result, anyhow};
 use collections::{HashSet, IndexMap};
 pub use connection::*;
 pub use diff::*;
-use feature_flags::{AcpBetaFeatureFlag, FeatureFlagAppExt as _};
 #[cfg(any(test, feature = "test-support"))]
 use futures::future::BoxFuture;
 use futures::{FutureExt, channel::oneshot};
@@ -1911,11 +1910,34 @@ impl ToolCall {
         project: WeakEntity<Project>,
         cx: &mut AsyncApp,
     ) -> Option<ResolvedLocation> {
+        let (fs, is_absolute) = project
+            .update(cx, |project, cx| {
+                (
+                    project.fs().clone(),
+                    project.path_style(cx).is_absolute(&location.path),
+                )
+            })
+            .ok()?;
+        // Agents report directories (the workspace root, a folder they just
+        // created) as tool call locations. Opening a buffer for one fails with
+        // EISDIR and logs an error for every reported location, so check the
+        // kind first.
+        if is_absolute
+            && fs
+                .metadata(&location.path)
+                .await
+                .ok()
+                .flatten()
+                .is_some_and(|metadata| metadata.is_dir)
+        {
+            return None;
+        }
+
         let buffer = project
             .update(cx, |project, cx| {
                 if let Some(path) = project.project_path_for_absolute_path(&location.path, cx) {
                     Some(project.open_buffer(path, cx))
-                } else if project.path_style(cx).is_absolute(&location.path) {
+                } else if is_absolute {
                     Some(project.open_local_buffer(&location.path, cx))
                 } else {
                     None
@@ -2891,7 +2913,7 @@ impl ContentBlock {
                 Some(language_registry.clone()),
                 None,
                 MarkdownOptions {
-                    render_mermaid_diagrams: true,
+                    render_embedded_diagrams: true,
                     render_metadata_blocks: true,
                     defer_parsing: true,
                     ..Default::default()
@@ -3798,6 +3820,9 @@ pub struct AcpThread {
     subagent_outcomes: Vec<(usize, acp_v2::StateUpdate)>,
     reported_usage: Option<ReportedTokenUsage>,
     token_usage: Option<TokenUsage>,
+    /// Disarmed on each auto-compaction trigger and re-armed once usage drops
+    /// below the threshold, so a failed shrink can't loop compaction prompts.
+    auto_compact_armed: bool,
     cost: Option<SessionCost>,
     prompt_capabilities: acp_v2::PromptCapabilities,
     available_commands: Vec<acp_v2::AvailableCommand>,
@@ -4146,6 +4171,7 @@ impl AcpThread {
             reported_usage: None,
             connection,
             token_usage: None,
+            auto_compact_armed: true,
             cost: None,
             prompt_capabilities,
             available_commands: Vec::new(),
@@ -4349,7 +4375,7 @@ impl AcpThread {
         })
     }
 
-    pub fn invalidate_mermaid_caches(&self, cx: &mut App) {
+    pub fn invalidate_embedded_diagrams_caches(&self, cx: &mut App) {
         for entry in &self.entries {
             let chunks = match entry {
                 AgentThreadEntry::AssistantMessage(message) => &message.chunks,
@@ -4362,7 +4388,7 @@ impl AcpThread {
                 };
                 for markdown in block.markdowns() {
                     markdown.update(cx, |markdown, cx| {
-                        markdown.invalidate_mermaid_cache(cx);
+                        markdown.invalidate_embedded_diagrams_caches(cx);
                     });
                 }
             }
@@ -4983,6 +5009,11 @@ impl AcpThread {
             && self.foreground_activity() == ForegroundActivity::Idle
         {
             cx.emit(AcpThreadEvent::ActivityConfirmedIdle);
+        }
+        // v2 智能体在回合结束上报 Idle 时才发用量，此时再补一次阈值检查；
+        // 触发函数内部已按活动状态与 AgentOwned 会话做了过滤。
+        if self.foreground_activity() == ForegroundActivity::Idle {
+            self.maybe_trigger_auto_compact(cx);
         }
         Ok(())
     }
@@ -6116,22 +6147,30 @@ impl AcpThread {
         cx: &mut Context<Self>,
     ) {
         let id = ContextCompactionId(update.compaction_id.0.clone());
+        let completed = matches!(update.status, acp_v2::CompactionStatus::Completed);
         let language_registry = self.project.read(cx).languages().clone();
 
-        if let Some((entry_index, compaction)) =
-            self.entries
-                .iter_mut()
-                .enumerate()
-                .rev()
-                .find_map(|(entry_index, entry)| match entry {
-                    AgentThreadEntry::ContextCompaction(compaction) if compaction.id == id => {
-                        Some((entry_index, compaction))
-                    }
-                    _ => None,
-                })
-        {
+        let existing_ix = self
+            .entries
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(entry_index, entry)| match entry {
+                AgentThreadEntry::ContextCompaction(compaction) if compaction.id == id => {
+                    Some(entry_index)
+                }
+                _ => None,
+            });
+        if let Some(entry_index) = existing_ix {
+            let AgentThreadEntry::ContextCompaction(compaction) = &mut self.entries[entry_index]
+            else {
+                unreachable!("entry at {entry_index} is a context compaction");
+            };
             compaction.apply_update(update, metadata, &language_registry, cx);
             cx.emit(AcpThreadEvent::EntryUpdated(entry_index));
+            if completed {
+                self.drop_compacted_entries(entry_index, cx);
+            }
             return;
         }
 
@@ -6144,6 +6183,62 @@ impl AcpThread {
         };
         compaction.apply_update(update, metadata, &language_registry, cx);
         self.push_entry(AgentThreadEntry::ContextCompaction(compaction), cx);
+        if completed {
+            let entry_index = self.entries.len() - 1;
+            self.drop_compacted_entries(entry_index, cx);
+        }
+    }
+
+    /// 压缩完成后释放被摘要覆盖的条目，防止长会话的工具输出与 diff 无限
+    /// 驻留内存；摘要条目本身保留，作为模型保留内容的记录。
+    fn drop_compacted_entries(&mut self, compaction_ix: usize, cx: &mut Context<Self>) {
+        // 每次完成的压缩覆盖上一次完成压缩之后的全部条目；失败或取消的压缩
+        // 条目只是会话记录标记（会被新摘要取代），不是分段边界。进行中的压缩
+        // 是边界：它还没有摘要，丢弃它会让后续 chunk/update 重建出重排的历史。
+        let start = self.entries[..compaction_ix]
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(ix, entry)| match entry {
+                AgentThreadEntry::ContextCompaction(compaction)
+                    if matches!(
+                        compaction.status,
+                        ContextCompactionStatus::Completed | ContextCompactionStatus::InProgress
+                    ) =>
+                {
+                    Some(ix + 1)
+                }
+                _ => None,
+            })
+            .unwrap_or(0);
+        if start >= compaction_ix {
+            return;
+        }
+
+        self.flush_streaming_text(cx);
+
+        // 丢弃区间内的终端若仍被保留条目引用（跨多条工具调用复用的长驻
+        // 终端），必须留下；只终止剩余会话不再使用的终端。
+        let kept_terminal_ids: HashSet<acp_v2::TerminalId> = self.entries[compaction_ix..]
+            .iter()
+            .flat_map(|entry| entry.terminals())
+            .filter_map(|terminal| terminal.read(cx).id().clone().into())
+            .collect();
+        let terminals_to_remove: Vec<acp_v2::TerminalId> = self.entries[start..compaction_ix]
+            .iter()
+            .flat_map(|entry| entry.terminals())
+            .filter_map(|terminal| terminal.read(cx).id().clone().into())
+            .filter(|id| !kept_terminal_ids.contains(id))
+            .collect();
+        for terminal_id in terminals_to_remove {
+            if let Some(terminal) = self.terminals.remove(&terminal_id) {
+                terminal.update(cx, |terminal, cx| terminal.kill(cx));
+            }
+        }
+
+        let range = start..compaction_ix;
+        self.entries.drain(range.clone());
+        cx.emit(AcpThreadEvent::EntriesRemoved(range));
     }
 
     pub fn append_context_compaction_summary(
@@ -6315,6 +6410,114 @@ impl AcpThread {
         cx.emit(AcpThreadEvent::TokenUsageUpdated(
             OutputTokensUpdate::Unchanged,
         ));
+        self.maybe_trigger_auto_compact(cx);
+    }
+
+    /// Whether reported usage reached the threshold, with the native agent's
+    /// percentage / tokens-used / tokens-remaining semantics.
+    fn auto_compact_threshold_reached(
+        &self,
+        threshold: agent_settings::AutoCompactThreshold,
+    ) -> bool {
+        let Some(usage) = self.token_usage.as_ref() else {
+            return false;
+        };
+        // Without a known context-window size we can only honor the absolute
+        // "tokens used" threshold.
+        if usage.max_tokens == 0 {
+            return match threshold {
+                agent_settings::AutoCompactThreshold::TokensUsed(tokens) => {
+                    usage.used_tokens >= tokens
+                }
+                _ => false,
+            };
+        }
+        match threshold {
+            agent_settings::AutoCompactThreshold::Percentage(fraction) => {
+                usage.used_tokens as f64 >= usage.max_tokens as f64 * fraction
+            }
+            agent_settings::AutoCompactThreshold::TokensUsed(tokens) => usage.used_tokens >= tokens,
+            agent_settings::AutoCompactThreshold::TokensRemaining(tokens) => {
+                usage.max_tokens.saturating_sub(usage.used_tokens) <= tokens
+            }
+        }
+    }
+
+    /// External agents can't be compacted from the client — ACP has no
+    /// client-initiated compaction request — so `agent.auto_compact` is honored
+    /// by invoking the agent's own `/compact` (or `/compress`) command once
+    /// usage crosses the threshold. The native agent self-compacts in its turn
+    /// loop, so it's excluded.
+    fn maybe_trigger_auto_compact(&mut self, cx: &mut Context<Self>) {
+        if self.connection.is_native()
+            || self.foreground_activity().is_active()
+            || matches!(
+                self.submissions.transport(),
+                SubmissionTransport::AgentOwned
+            )
+        {
+            return;
+        }
+        let auto_compact = AgentSettings::get_global(cx).auto_compact;
+        if !auto_compact.enabled {
+            return;
+        }
+        let Some(usage) = self.token_usage.as_ref() else {
+            return;
+        };
+
+        if !self.auto_compact_threshold_reached(auto_compact.threshold) {
+            // Below the threshold: allow the next crossing to compact again.
+            let was_disarmed = !self.auto_compact_armed;
+            self.auto_compact_armed = true;
+            if was_disarmed {
+                log::info!(
+                    "Auto-compact re-armed after usage fell below threshold ({}/{} tokens)",
+                    usage.used_tokens,
+                    usage.max_tokens
+                );
+            }
+            return;
+        }
+        // Only fire once per threshold crossing so an agent whose compaction
+        // doesn't shrink the context enough can't be prompted in a loop.
+        if !self.auto_compact_armed {
+            log::debug!(
+                "Auto-compact: usage {}/{} crossed threshold but already fired once; \
+                 waiting for usage to drop below threshold",
+                usage.used_tokens,
+                usage.max_tokens
+            );
+            return;
+        }
+
+        let Some(command) = self.available_commands.iter().find(|command| {
+            let name = command.name();
+            name.eq_ignore_ascii_case("compact") || name.eq_ignore_ascii_case("compress")
+        }) else {
+            log::warn!(
+                "Auto-compact: usage {}/{} reached threshold but the agent advertises no \
+                 compact/compress command",
+                usage.used_tokens,
+                usage.max_tokens
+            );
+            return;
+        };
+        self.auto_compact_armed = false;
+        let command_name = command.name();
+        let command_block =
+            acp_v2::ContentBlock::Text(acp_v2::TextContent::new(format!("/{command_name}")));
+        log::info!("Auto-compacting external agent context via /{command_name}");
+        cx.spawn(async move |this, cx| {
+            let response = this
+                .update(cx, |this, cx| this.send_command(vec![command_block], cx))?
+                .await;
+            if let Err(error) = response {
+                log::error!("Auto compaction turn failed: {error:#}");
+            }
+            anyhow::Ok(())
+        })
+        .detach();
     }
 
     pub fn update_retry_status(&mut self, status: RetryStatus, cx: &mut Context<Self>) {
@@ -7765,9 +7968,10 @@ impl AcpThread {
                             cx.emit(AcpThreadEvent::Refusal);
                         }
 
-                        if cx.has_flag::<AcpBetaFeatureFlag>()
-                            && let Some(response_usage) = &r.usage
-                        {
+                        // 外部智能体在回合响应里直接上报本轮 input/output 用量；这类数据与
+                        // `UsageUpdate`（used/size）互补，不应被 beta 门禁丢弃，否则 ACP
+                        // 面板的每轮 token 统计永远是空的。
+                        if let Some(response_usage) = &r.usage {
                             let usage = this.token_usage.get_or_insert_with(Default::default);
                             usage.input_tokens = response_usage.input_tokens;
                             usage.output_tokens = response_usage.output_tokens;
@@ -7783,6 +7987,7 @@ impl AcpThread {
                             cx.emit(AcpThreadEvent::StatusChanged);
                         }
                         let stop_reason = stop_reason_from_v1(&r.stop_reason);
+                        let canceled = matches!(stop_reason, Some(acp_v2::StopReason::Cancelled));
                         this.set_foreground_state(
                             acp_v2::StateUpdate::Idle(
                                 acp_v2::IdleStateUpdate::new().stop_reason(stop_reason.clone()),
@@ -7794,6 +7999,10 @@ impl AcpThread {
                             activity_duration: this.activity.duration(),
                             stop_reason,
                         });
+                        // 外部智能体只能由客户端触发压缩：一轮正常结束且未被取消时检查用量阈值。
+                        if is_same_turn && !canceled {
+                            this.maybe_trigger_auto_compact(cx);
+                        }
                         Ok(Some(r))
                     }
                     Err(e) => {
@@ -16713,10 +16922,6 @@ mod tests {
                     "second",
                     acp_v1::CompactionStatus::InProgress,
                 )),
-                acp_v1::SessionUpdate::CompactionUpdate(acp_v1::CompactionUpdate::new(
-                    "second",
-                    acp_v1::CompactionStatus::Completed,
-                )),
                 acp_v1::SessionUpdate::CompactionSummaryChunk(
                     acp_v1::CompactionSummaryChunk::new(
                         "first",
@@ -16731,23 +16936,28 @@ mod tests {
             }
             assert!(thread.is_compacting());
         });
-        assert_eq!(*events.borrow(), [None, None, None, Some(2), Some(0)]);
+        assert_eq!(*events.borrow(), [None, None, None, Some(0)]);
 
         thread.update(cx, |thread, cx| {
-            thread
-                .handle_session_update(
-                    acp_v1::SessionUpdate::CompactionUpdate(acp_v1::CompactionUpdate::new(
-                        "first",
-                        acp_v1::CompactionStatus::Cancelled,
-                    )),
-                    cx,
-                )
-                .expect("failed to cancel compaction");
+            for update in [
+                acp_v1::SessionUpdate::CompactionUpdate(acp_v1::CompactionUpdate::new(
+                    "first",
+                    acp_v1::CompactionStatus::Cancelled,
+                )),
+                acp_v1::SessionUpdate::CompactionUpdate(acp_v1::CompactionUpdate::new(
+                    "second",
+                    acp_v1::CompactionStatus::Cancelled,
+                )),
+            ] {
+                thread
+                    .handle_session_update(update, cx)
+                    .expect("failed to cancel compaction");
+            }
             assert!(!thread.is_compacting());
         });
         assert_eq!(
             *events.borrow(),
-            [None, None, None, Some(2), Some(0), Some(0)]
+            [None, None, None, Some(0), Some(0), Some(2)]
         );
         thread.read_with(cx, |thread, cx| {
             let [
@@ -16765,7 +16975,7 @@ mod tests {
                 Some(acp_v2::Meta::from_iter([("original".into(), true.into())]))
             );
             assert_eq!(second.id.0.as_ref(), "second");
-            assert_eq!(second.status, ContextCompactionStatus::Completed);
+            assert_eq!(second.status, ContextCompactionStatus::Canceled);
             assert!(
                 thread
                     .to_markdown(cx)
@@ -16832,9 +17042,9 @@ mod tests {
                 None,
                 None,
                 None,
+                Some(0),
+                Some(0),
                 Some(2),
-                Some(0),
-                Some(0),
                 Some(0),
                 Some(0),
                 Some(0)
@@ -18574,6 +18784,180 @@ mod tests {
             assert!(call.resolved_locations.is_empty());
             assert!(thread.project.read(cx).agent_location().is_none());
         });
+    }
+
+    #[gpui::test]
+    async fn test_tool_locations_skip_directories(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+        fs.insert_tree(
+            path!("/project"),
+            json!({"src": {"file.rs": "first\nsecond\n"}}),
+        )
+        .await;
+        fs.insert_tree(path!("/outside"), json!({"notes.md": "# notes\n"}))
+            .await;
+        let project = Project::test(fs.clone(), [Path::new(path!("/project"))], cx).await;
+        let connection = Rc::new(FakeAgentConnection::new());
+        let thread = cx
+            .update(|cx| {
+                connection.new_session(
+                    project.clone(),
+                    PathList::new(&[Path::new(path!("/project"))]),
+                    cx,
+                )
+            })
+            .await
+            .expect("session");
+
+        let reads_before = fs.read_call_count();
+        let id = acp_v2::ToolCallId::new("directory-location");
+        thread.update(cx, |thread, cx| {
+            thread
+                .upsert_tool_call(
+                    acp_v1::ToolCall::new("directory-location", "Read").locations(vec![
+                        acp_v1::ToolCallLocation::new(path!("/project")),
+                        acp_v1::ToolCallLocation::new(path!("/project/src")),
+                        acp_v1::ToolCallLocation::new(path!("/outside")),
+                        acp_v1::ToolCallLocation::new(path!("/project/src/file.rs")).line(2),
+                    ]),
+                    cx,
+                )
+                .expect("tool call");
+        });
+        cx.run_until_parked();
+
+        thread.read_with(cx, |thread, cx| {
+            let (index, call) = thread.tool_call(&id).expect("tool");
+            assert_eq!(call.locations.len(), 4);
+            assert_eq!(
+                call.resolved_locations.iter().flatten().count(),
+                1,
+                "only the file location should resolve"
+            );
+            assert!(thread.entries[index].location(0).is_none());
+            assert!(thread.entries[index].location(1).is_none());
+            assert!(thread.entries[index].location(2).is_none());
+            assert!(thread.entries[index].location(3).is_some());
+            assert_eq!(
+                thread
+                    .project
+                    .read(cx)
+                    .worktrees(cx)
+                    .map(|worktree| worktree.read(cx).abs_path().to_path_buf())
+                    .collect::<Vec<_>>(),
+                vec![PathBuf::from(path!("/project"))],
+                "a directory location must not create a worktree for it"
+            );
+        });
+        assert_eq!(
+            fs.read_call_count() - reads_before,
+            1,
+            "only the file location may be read; directory locations must not be opened"
+        );
+    }
+
+    #[gpui::test]
+    async fn test_context_compaction_completion_drops_compacted_entries(cx: &mut TestAppContext) {
+        init_test(cx);
+        let project = Project::test(FakeFs::new(cx.executor()), [], cx).await;
+        let connection = Rc::new(FakeAgentConnection::new());
+        let thread = cx
+            .update(|cx| {
+                connection.new_session(project, PathList::new(&[Path::new(path!("/test"))]), cx)
+            })
+            .await
+            .expect("failed to create ACP thread");
+        let removed_ranges = Rc::new(RefCell::new(Vec::new()));
+        let _subscription = cx.update(|cx| {
+            let removed_ranges = removed_ranges.clone();
+            cx.subscribe(&thread, move |_, event, _| match event {
+                AcpThreadEvent::EntriesRemoved(range) => {
+                    removed_ranges.borrow_mut().push(range.clone())
+                }
+                _ => {}
+            })
+        });
+
+        thread.update(cx, |thread, cx| {
+            for update in [
+                acp_v1::SessionUpdate::ToolCall(acp_v1::ToolCall::new("tool-1", "Old tool call")),
+                acp_v1::SessionUpdate::ToolCall(acp_v1::ToolCall::new(
+                    "tool-2",
+                    "Another old tool call",
+                )),
+                // 失败的压缩保留其条目。
+                acp_v1::SessionUpdate::CompactionUpdate(
+                    acp_v1::CompactionUpdate::new("failed", acp_v1::CompactionStatus::Failed)
+                        .error("model unavailable"),
+                ),
+                acp_v1::SessionUpdate::ToolCall(acp_v1::ToolCall::new(
+                    "tool-3",
+                    "Post-failure tool call",
+                )),
+                acp_v1::SessionUpdate::CompactionUpdate(acp_v1::CompactionUpdate::new(
+                    "first",
+                    acp_v1::CompactionStatus::InProgress,
+                )),
+                acp_v1::SessionUpdate::CompactionUpdate(
+                    acp_v1::CompactionUpdate::new("first", acp_v1::CompactionStatus::Completed)
+                        .summary(vec![acp_v1::ContentBlock::Text(acp_v1::TextContent::new(
+                            "retained context",
+                        ))]),
+                ),
+            ] {
+                thread
+                    .handle_session_update(update, cx)
+                    .expect("failed to apply session update");
+            }
+            // 只剩摘要条目，被覆盖的内容全部释放。
+            let [AgentThreadEntry::ContextCompaction(first)] = thread.entries.as_slice() else {
+                panic!("completed compaction must drop the entries it summarizes");
+            };
+            assert_eq!(first.id.0.as_ref(), "first");
+            assert_eq!(first.status, ContextCompactionStatus::Completed);
+            assert!(
+                thread
+                    .to_markdown(cx)
+                    .starts_with("## Context Compaction (Completed)\n\nretained context\n\n")
+            );
+        });
+        assert_eq!(*removed_ranges.borrow(), [0..4]);
+
+        // 压缩之后新增的条目属于当前会话，只有下一次完成的压缩才会释放。
+        thread.update(cx, |thread, cx| {
+            for update in [
+                acp_v1::SessionUpdate::ToolCall(acp_v1::ToolCall::new(
+                    "tool-4",
+                    "Post-compaction tool",
+                )),
+                acp_v1::SessionUpdate::CompactionUpdate(acp_v1::CompactionUpdate::new(
+                    "second",
+                    acp_v1::CompactionStatus::InProgress,
+                )),
+                acp_v1::SessionUpdate::CompactionUpdate(
+                    acp_v1::CompactionUpdate::new("second", acp_v1::CompactionStatus::Completed)
+                        .summary(vec![acp_v1::ContentBlock::Text(acp_v1::TextContent::new(
+                            "second summary",
+                        ))]),
+                ),
+            ] {
+                thread
+                    .handle_session_update(update, cx)
+                    .expect("failed to apply session update");
+            }
+            let [
+                AgentThreadEntry::ContextCompaction(first),
+                AgentThreadEntry::ContextCompaction(second),
+            ] = thread.entries.as_slice()
+            else {
+                panic!("previous summary must be kept; only the new segment is dropped");
+            };
+            assert_eq!(first.id.0.as_ref(), "first");
+            assert_eq!(second.id.0.as_ref(), "second");
+            assert_eq!(second.status, ContextCompactionStatus::Completed);
+        });
+        assert_eq!(*removed_ranges.borrow(), [0..4, 1..2]);
     }
 
     #[gpui::test]
@@ -21749,6 +22133,7 @@ mod tests {
     struct FakeAgentConnection {
         auth_methods: Vec<acp_v2::AuthMethod>,
         supports_truncate: bool,
+        native: bool,
         sessions: Arc<parking_lot::Mutex<HashMap<acp_v2::SessionId, WeakEntity<AcpThread>>>>,
         set_title_calls: Rc<RefCell<Vec<SharedString>>>,
         on_user_message: Option<
@@ -21769,6 +22154,7 @@ mod tests {
             Self {
                 auth_methods: Vec::new(),
                 supports_truncate: true,
+                native: false,
                 on_user_message: None,
                 sessions: Arc::default(),
                 set_title_calls: Default::default(),
@@ -21777,6 +22163,11 @@ mod tests {
 
         fn without_truncate_support(mut self) -> Self {
             self.supports_truncate = false;
+            self
+        }
+
+        fn as_native(mut self) -> Self {
+            self.native = true;
             self
         }
 
@@ -21803,6 +22194,10 @@ mod tests {
     impl AgentConnection for FakeAgentConnection {
         fn agent_id(&self) -> AgentId {
             AgentId::new("fake")
+        }
+
+        fn is_native(&self) -> bool {
+            self.native
         }
 
         fn telemetry_id(&self) -> SharedString {
@@ -23128,6 +23523,272 @@ mod tests {
             assert!((cost.amount - 0.42).abs() < f64::EPSILON);
             assert_eq!(cost.currency.as_ref(), "USD");
         });
+    }
+
+    #[gpui::test]
+    async fn test_auto_compact_triggers_agent_compact_command(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let prompts = Rc::new(RefCell::new(Vec::new()));
+        let connection = Rc::new(FakeAgentConnection::new().on_user_message({
+            let prompts = prompts.clone();
+            move |request, _thread, _cx| {
+                prompts.borrow_mut().push(request.prompt);
+                async move { Ok(acp_v1::PromptResponse::new(acp_v1::StopReason::EndTurn)) }
+                    .boxed_local()
+            }
+        }));
+        let thread = cx
+            .update(|cx| {
+                connection.new_session(project, PathList::new(&[Path::new(path!("/test"))]), cx)
+            })
+            .await
+            .unwrap();
+
+        // Usage above the 90% threshold but the agent hasn't advertised a
+        // compact command: there is nothing to invoke.
+        thread.update(cx, |thread, cx| {
+            thread
+                .handle_session_update(
+                    acp_v1::SessionUpdate::UsageUpdate(acp_v1::UsageUpdate::new(9_500, 10_000)),
+                    cx,
+                )
+                .unwrap();
+        });
+        cx.run_until_parked();
+        assert!(prompts.borrow().is_empty());
+
+        thread.update(cx, |thread, cx| {
+            thread
+                .handle_session_update(
+                    acp_v1::SessionUpdate::AvailableCommandsUpdate(
+                        acp_v1::AvailableCommandsUpdate::new(vec![acp_v1::AvailableCommand::new(
+                            "compact",
+                            "Compact the context",
+                        )]),
+                    ),
+                    cx,
+                )
+                .unwrap();
+        });
+
+        // The next usage report above the threshold invokes the agent's own
+        // compaction command as a turn.
+        thread.update(cx, |thread, cx| {
+            thread
+                .handle_session_update(
+                    acp_v1::SessionUpdate::UsageUpdate(acp_v1::UsageUpdate::new(9_600, 10_000)),
+                    cx,
+                )
+                .unwrap();
+        });
+        cx.run_until_parked();
+        assert_eq!(prompts.borrow().len(), 1);
+        match &prompts.borrow()[0][0] {
+            acp_v2::ContentBlock::Text(text) => assert_eq!(text.text, "/compact"),
+            block => panic!("expected a text block, got {block:?}"),
+        }
+
+        // Staying above the threshold does not fire again until usage drops
+        // below it first, so an agent whose compaction didn't shrink the
+        // context enough is not prompted in a loop.
+        thread.update(cx, |thread, cx| {
+            thread
+                .handle_session_update(
+                    acp_v1::SessionUpdate::UsageUpdate(acp_v1::UsageUpdate::new(9_700, 10_000)),
+                    cx,
+                )
+                .unwrap();
+        });
+        cx.run_until_parked();
+        assert_eq!(prompts.borrow().len(), 1);
+
+        thread.update(cx, |thread, cx| {
+            thread
+                .handle_session_update(
+                    acp_v1::SessionUpdate::UsageUpdate(acp_v1::UsageUpdate::new(1_000, 10_000)),
+                    cx,
+                )
+                .unwrap();
+            thread
+                .handle_session_update(
+                    acp_v1::SessionUpdate::UsageUpdate(acp_v1::UsageUpdate::new(9_800, 10_000)),
+                    cx,
+                )
+                .unwrap();
+        });
+        cx.run_until_parked();
+        assert_eq!(prompts.borrow().len(), 2);
+    }
+
+    #[gpui::test]
+    async fn test_auto_compact_after_usage_reported_inside_turn(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let prompts = Rc::new(RefCell::new(Vec::new()));
+        let connection = Rc::new(FakeAgentConnection::new().on_user_message({
+            let prompts = prompts.clone();
+            move |request, thread, mut cx| {
+                let is_first = {
+                    let mut prompts = prompts.borrow_mut();
+                    prompts.push(request.prompt);
+                    prompts.len() == 1
+                };
+                async move {
+                    if is_first {
+                        // pi-acp 与 codex-acp 在回合内上报用量：此时 running_turn 仍占用，
+                        // 客户端只能在本轮结束（收到 PromptResponse）时补做阈值检查。
+                        thread.update(&mut cx, |thread, cx| {
+                            thread
+                                .handle_session_update(
+                                    acp_v1::SessionUpdate::AvailableCommandsUpdate(
+                                        acp_v1::AvailableCommandsUpdate::new(vec![
+                                            acp_v1::AvailableCommand::new(
+                                                "compact",
+                                                "Compact the context",
+                                            ),
+                                        ]),
+                                    ),
+                                    cx,
+                                )
+                                .unwrap();
+                            thread
+                                .handle_session_update(
+                                    acp_v1::SessionUpdate::UsageUpdate(acp_v1::UsageUpdate::new(
+                                        9_500, 10_000,
+                                    )),
+                                    cx,
+                                )
+                                .unwrap();
+                        })?;
+                    }
+                    Ok(acp_v1::PromptResponse::new(acp_v1::StopReason::EndTurn))
+                }
+                .boxed_local()
+            }
+        }));
+        let thread = cx
+            .update(|cx| {
+                connection.new_session(project, PathList::new(&[Path::new(path!("/test"))]), cx)
+            })
+            .await
+            .unwrap();
+
+        thread
+            .update(cx, |thread, cx| thread.send_raw("work", cx))
+            .await
+            .unwrap();
+        cx.run_until_parked();
+
+        assert_eq!(prompts.borrow().len(), 2, "回合结束后应补发压缩命令");
+        match &prompts.borrow()[1][0] {
+            acp_v2::ContentBlock::Text(text) => assert_eq!(text.text, "/compact"),
+            block => panic!("expected a text block, got {block:?}"),
+        }
+    }
+
+    #[gpui::test]
+    async fn test_prompt_response_usage_populates_token_stats(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let connection = Rc::new(FakeAgentConnection::new().on_user_message({
+            move |_request, _thread, _cx| {
+                async move {
+                    Ok(acp_v1::PromptResponse::new(acp_v1::StopReason::EndTurn)
+                        .usage(acp_v1::Usage::new(150, 100, 50)))
+                }
+                .boxed_local()
+            }
+        }));
+        let thread = cx
+            .update(|cx| {
+                connection.new_session(project, PathList::new(&[Path::new(path!("/test"))]), cx)
+            })
+            .await
+            .unwrap();
+        let _subscription = cx.update(|cx| {
+            cx.subscribe(&thread, {
+                let events = events.clone();
+                move |_, event, _| {
+                    if let AcpThreadEvent::TokenUsageUpdated(update) = event {
+                        events.borrow_mut().push(*update);
+                    }
+                }
+            })
+        });
+
+        thread
+            .update(cx, |thread, cx| thread.send_raw("work", cx))
+            .await
+            .unwrap();
+        cx.run_until_parked();
+
+        thread.read_with(cx, |thread, _| {
+            let usage = thread.token_usage().expect("token usage recorded");
+            assert_eq!(usage.input_tokens, 100);
+            assert_eq!(usage.output_tokens, 50);
+            let adds = events
+                .borrow()
+                .iter()
+                .filter(|update| matches!(update, OutputTokensUpdate::LegacyAdd { .. }))
+                .count();
+            // 即使未启用 acp-beta，ACP 面板的每轮统计也要能显示转出的 token 数。
+            assert_eq!(adds, 1);
+        });
+    }
+
+    #[gpui::test]
+    async fn test_auto_compact_skips_native_agent(cx: &mut TestAppContext) {
+        init_test(cx);
+
+        let fs = FakeFs::new(cx.executor());
+        let project = Project::test(fs, [], cx).await;
+        let prompts = Rc::new(RefCell::new(Vec::new()));
+        let connection = Rc::new(FakeAgentConnection::new().as_native().on_user_message({
+            let prompts = prompts.clone();
+            move |request, _thread, _cx| {
+                prompts.borrow_mut().push(request.prompt);
+                async move { Ok(acp_v1::PromptResponse::new(acp_v1::StopReason::EndTurn)) }
+                    .boxed_local()
+            }
+        }));
+        let thread = cx
+            .update(|cx| {
+                connection.new_session(project, PathList::new(&[Path::new(path!("/test"))]), cx)
+            })
+            .await
+            .unwrap();
+
+        // The native agent compacts inside its own turn loop; the client must
+        // not send it a compact command even when usage is above the threshold.
+        thread.update(cx, |thread, cx| {
+            thread
+                .handle_session_update(
+                    acp_v1::SessionUpdate::AvailableCommandsUpdate(
+                        acp_v1::AvailableCommandsUpdate::new(vec![acp_v1::AvailableCommand::new(
+                            "compact",
+                            "Compact the context",
+                        )]),
+                    ),
+                    cx,
+                )
+                .unwrap();
+            thread
+                .handle_session_update(
+                    acp_v1::SessionUpdate::UsageUpdate(acp_v1::UsageUpdate::new(9_500, 10_000)),
+                    cx,
+                )
+                .unwrap();
+        });
+        cx.run_until_parked();
+        assert!(prompts.borrow().is_empty());
     }
 
     #[gpui::test]

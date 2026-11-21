@@ -6,6 +6,7 @@ use gpui::{
 use release_channel::ReleaseChannel;
 use std::rc::Rc;
 use ui::{Render, prelude::*};
+use zed_i18n::t;
 
 pub struct AgentNotification {
     title: SharedString,
@@ -185,7 +186,7 @@ impl Render for AgentNotification {
                     .gap_1()
                     .items_center()
                     .child(
-                        Button::new("open", "View")
+                        Button::new("open", t!("agent_ui.agent_notification.view"))
                             .style(ButtonStyle::Tinted(ui::TintColor::Accent))
                             .full_width()
                             .on_click({
@@ -194,11 +195,15 @@ impl Render for AgentNotification {
                                 })
                             }),
                     )
-                    .child(Button::new("dismiss", "Dismiss").full_width().on_click({
-                        cx.listener(move |this, _event, _, cx| {
-                            this.dismiss(cx);
-                        })
-                    })),
+                    .child(
+                        Button::new("dismiss", t!("agent_ui.agent_notification.dismiss"))
+                            .full_width()
+                            .on_click({
+                                cx.listener(move |this, _event, _, cx| {
+                                    this.dismiss(cx);
+                                })
+                            }),
+                    ),
             )
     }
 }

@@ -15,6 +15,7 @@ pub mod visual_tests;
 #[cfg(target_os = "windows")]
 pub(crate) mod windows_only_instance;
 
+use zed_i18n::t;
 use agent_settings::{UserAgentsMdState, init_user_agents_md};
 use agent_ui::AgentDiffToolbar;
 use anyhow::Context as _;
@@ -673,9 +674,9 @@ fn initialize_file_watcher(fs: &dyn Fs, window: &mut Window, cx: &mut Context<Wo
         );
         let prompt = window.prompt(
             PromptLevel::Critical,
-            "Could not start inotify",
+            t!("zed.startup.inotify_title").as_ref(),
             Some(&message),
-            &["Troubleshoot and Quit"],
+            &[t!("zed.startup.troubleshoot_and_quit")],
             cx,
         );
         cx.spawn(async move |_, cx| {
@@ -704,9 +705,9 @@ fn initialize_file_watcher(fs: &dyn Fs, window: &mut Window, cx: &mut Context<Wo
         );
         let prompt = window.prompt(
             PromptLevel::Critical,
-            "Could not start ReadDirectoryChangesW",
+            t!("zed.startup.rdcw_title"),
             Some(&message),
-            &["Troubleshoot and Quit"],
+            &[t!("zed.startup.troubleshoot_and_quit")],
             cx,
         );
         cx.spawn(async move |_, cx| {
@@ -754,9 +755,9 @@ fn show_software_emulation_warning_if_needed(
         );
         let prompt = window.prompt(
             PromptLevel::Critical,
-            "Unsupported GPU",
+            t!("zed.startup.gpu_title").as_ref(),
             Some(&message),
-            &["Skip", "Troubleshoot and Quit"],
+            &[t!("zed.startup.gpu_skip"), t!("zed.startup.troubleshoot_and_quit")],
             cx,
         );
         cx.spawn(async move |_, cx| {
@@ -1299,7 +1300,7 @@ fn register_actions(
                 Ok(())
             })
             .detach_and_prompt_err(
-                "Error registering zed:// scheme",
+                t!("zed.toast.register_zed_scheme_error").as_ref(),
                 window,
                 cx,
                 |_, _, _| None,
@@ -1635,14 +1636,14 @@ fn open_about_window(cx: &mut App) {
                             .child(Headline::new(self.message.clone()))
                             .when_some(self.commit.clone(), |this, commit| {
                                 this.child(
-                                    Label::new("Commit")
+                                    Label::new(t!("zed.about.commit_label"))
                                         .color(Color::Muted)
                                         .size(LabelSize::XSmall),
                                 )
                                 .child(Label::new(commit).size(LabelSize::Small))
                             })
                             .child(
-                                Label::new("Version")
+                                Label::new(t!("zed.about.version_label"))
                                     .color(Color::Muted)
                                     .size(LabelSize::XSmall),
                             )
@@ -1660,7 +1661,7 @@ fn open_about_window(cx: &mut App) {
                                         window.remove_window();
                                     }))
                                     .child(
-                                        Button::new("ok", "OK")
+                                        Button::new("ok", t!("zed.common.ok"))
                                             .full_width()
                                             .style(ButtonStyle::OutlinedGhost)
                                             .toggle_state(ok_is_focused)
@@ -1680,7 +1681,7 @@ fn open_about_window(cx: &mut App) {
                                         },
                                     ))
                                     .child(
-                                        Button::new("copy", "Copy")
+                                        Button::new("copy", t!("zed.about.copy_button"))
                                             .full_width()
                                             .style(ButtonStyle::Tinted(TintColor::Accent))
                                             .toggle_state(copy_is_focused)
@@ -1728,7 +1729,7 @@ fn open_about_window(cx: &mut App) {
     cx.open_window(
         WindowOptions {
             titlebar: Some(TitlebarOptions {
-                title: Some("About Zed".into()),
+                title: Some(t!("zed.about.window_title").into()),
                 appears_transparent: true,
                 traffic_light_position: Some(point(px(12.), px(12.))),
             }),
@@ -1787,9 +1788,9 @@ fn quit(_: &Quit, cx: &mut App) {
                 .update(cx, |_, window, cx| {
                     window.prompt(
                         PromptLevel::Info,
-                        "Are you sure you want to quit?",
+                        t!("zed.quit.message").as_ref(),
                         None,
-                        &["Quit", "Cancel"],
+                        &[t!("zed.quit.quit"), t!("zed.common.cancel")],
                         cx,
                     )
                 })
@@ -1895,7 +1896,7 @@ fn open_log_file(workspace: &mut Workspace, window: &mut Window, cx: &mut Contex
                 buffer.set_text(log, cx);
             });
 
-            let buffer = cx.new(|cx| MultiBuffer::singleton(buffer, cx).with_title("Log".into()));
+            let buffer = cx.new(|cx| MultiBuffer::singleton(buffer, cx).with_title(t!("zed.open_log.title").into()));
 
             let editor = cx
                 .new_window_entity(|window, cx| {
@@ -1949,7 +1950,7 @@ fn notify_settings_errors(result: settings::SettingsParseResult, is_user: bool, 
                 show_app_notification(id, cx, move |cx| {
                     cx.new(|cx| {
                         MessageNotification::new(format!("Invalid user settings file\n{error}"), cx)
-                            .primary_message("Open Settings File")
+                            .primary_message(t!("zed.notification.open_settings_file"))
                             .primary_icon(IconName::Settings)
                             .primary_on_click(|window, cx| {
                                 window.dispatch_action(
@@ -1985,7 +1986,7 @@ fn notify_settings_errors(result: settings::SettingsParseResult, is_user: bool, 
                             ),
                             cx,
                         )
-                        .primary_message("Open Settings File")
+                        .primary_message(t!("zed.notification.open_settings_file"))
                         .primary_icon(IconName::Settings)
                         .primary_on_click(|window, cx| {
                             window.dispatch_action(zed_actions::OpenSettingsFile.boxed_clone(), cx);
@@ -2022,7 +2023,7 @@ fn init_global_config_error_notifications(cx: &mut App) {
                     show_app_notification(id, cx, move |cx| {
                         cx.new(|cx| {
                             MessageNotification::new(message.clone(), cx)
-                                .primary_message("Open File")
+                                .primary_message(t!("agent_ui.thread_view.open_file"))
                                 .primary_icon(IconName::Settings)
                                 .primary_on_click(move |window, cx| {
                                     on_click(window, cx);
@@ -2272,7 +2273,7 @@ fn show_keymap_file_json_error(
     show_app_notification(notification_id, cx, move |cx| {
         cx.new(|cx| {
             MessageNotification::new(message.clone(), cx)
-                .primary_message("Open Keymap File")
+                .primary_message(t!("zed.notification.open_keymap_file"))
                 .primary_icon(IconName::Settings)
                 .primary_on_click(|window, cx| {
                     window.dispatch_action(zed_actions::OpenKeymapFile.boxed_clone(), cx);
@@ -2290,7 +2291,7 @@ fn show_keymap_file_load_error(
     show_markdown_app_notification(
         notification_id,
         error_message,
-        "Open Keymap File".into(),
+        t!("zed.notification.open_keymap_file").into(),
         |window, cx| {
             window.dispatch_action(zed_actions::OpenKeymapFile.boxed_clone(), cx);
             cx.emit(DismissEvent);
@@ -2349,7 +2350,7 @@ fn reload_keymaps(cx: &mut App, mut user_key_bindings: Vec<KeyBinding>) {
     // On Windows, this is set in the `update_jump_list` method of the `HistoryManager`.
     #[cfg(not(target_os = "windows"))]
     cx.set_dock_menu(vec![gpui::MenuItem::action(
-        "New Window",
+        t!("zed.dock_menu.new_window"),
         workspace::NewWindow,
     )]);
     // todo: nicer api here?
@@ -2658,7 +2659,7 @@ fn open_local_file(
         struct NoOpenFolders;
 
         workspace.show_notification(NotificationId::unique::<NoOpenFolders>(), cx, |cx| {
-            cx.new(|cx| MessageNotification::new("This project has no folders open.", cx))
+            cx.new(|cx| MessageNotification::new(t!("zed.notification.no_open_folders"), cx))
         });
         None
     }
@@ -3177,7 +3178,7 @@ mod tests {
             1,
             "create_new_window: false should reuse the current window"
         );
-        cx.simulate_prompt_answer("Cancel");
+        cx.simulate_prompt_answer(t!("zed.common.cancel"));
         executor.run_until_parked();
     }
 
@@ -3598,7 +3599,7 @@ mod tests {
             .unwrap();
         executor.run_until_parked();
 
-        cx.simulate_prompt_answer("Don't Save");
+        cx.simulate_prompt_answer(t!("search.project_search.save_prompt.dont_save"));
         close.await.unwrap();
 
         // Advance the clock to ensure that the item has been serialized and dropped from the queue
@@ -3664,7 +3665,7 @@ mod tests {
         assert_eq!(cx.update(|cx| cx.windows().len()), 1);
 
         // The window is successfully closed after the user dismisses the prompt.
-        cx.simulate_prompt_answer("Don't Save");
+        cx.simulate_prompt_answer(t!("search.project_search.save_prompt.dont_save"));
         executor.run_until_parked();
         assert_eq!(cx.update(|cx| cx.windows().len()), 0);
     }
@@ -4832,7 +4833,7 @@ mod tests {
             })
             .unwrap();
         cx.background_executor.run_until_parked();
-        cx.simulate_prompt_answer("Overwrite");
+        cx.simulate_prompt_answer(t!("dev_container.lib.overwrite"));
         save_task.await.unwrap();
         window
             .update(cx, |_, _, cx| {
@@ -5158,7 +5159,7 @@ mod tests {
             close_pinned: false,
         });
         cx.background_executor.run_until_parked();
-        cx.simulate_prompt_answer("Don't Save");
+        cx.simulate_prompt_answer(t!("search.project_search.save_prompt.dont_save"));
         cx.background_executor.run_until_parked();
 
         workspace.read_with(cx, |workspace, cx| {
@@ -7366,7 +7367,7 @@ mod tests {
             "Case 1: Should prompt to save dirty item in active workspace"
         );
 
-        cx.simulate_prompt_answer("Cancel");
+        cx.simulate_prompt_answer(t!("zed.common.cancel"));
         cx.run_until_parked();
 
         assert_eq!(
@@ -7386,7 +7387,7 @@ mod tests {
             })
             .unwrap();
         cx.run_until_parked();
-        cx.simulate_prompt_answer("Don't Save");
+        cx.simulate_prompt_answer(t!("search.project_search.save_prompt.dont_save"));
         close_task.await.ok();
         cx.run_until_parked();
 
@@ -7448,7 +7449,7 @@ mod tests {
             "Case 2: Should prompt to save dirty item in non-active workspace"
         );
 
-        cx.simulate_prompt_answer("Cancel");
+        cx.simulate_prompt_answer(t!("zed.common.cancel"));
         cx.run_until_parked();
 
         assert_eq!(
@@ -7468,7 +7469,7 @@ mod tests {
             })
             .unwrap();
         cx.run_until_parked();
-        cx.simulate_prompt_answer("Don't Save");
+        cx.simulate_prompt_answer(t!("search.project_search.save_prompt.dont_save"));
         close_task.await.ok();
         cx.run_until_parked();
 
@@ -7532,7 +7533,7 @@ mod tests {
             "Case 3: Should prompt to save dirty item in non-active window"
         );
 
-        cx.simulate_prompt_answer("Cancel");
+        cx.simulate_prompt_answer(t!("zed.common.cancel"));
         cx.run_until_parked();
 
         assert_eq!(
@@ -7654,7 +7655,7 @@ mod tests {
             "Reload should prompt to save the dirty item in the non-active workspace"
         );
 
-        cx.simulate_prompt_answer("Cancel");
+        cx.simulate_prompt_answer(t!("zed.common.cancel"));
         cx.run_until_parked();
 
         assert_eq!(
@@ -7679,7 +7680,7 @@ mod tests {
             cx.has_pending_prompt(),
             "Reload should prompt again for the dirty item"
         );
-        cx.simulate_prompt_answer("Don't Save");
+        cx.simulate_prompt_answer(t!("search.project_search.save_prompt.dont_save"));
         cx.run_until_parked();
 
         will_restart
@@ -8527,11 +8528,11 @@ mod tests {
         cx.update(|cx| reload_keymaps(cx, Vec::new()));
         cx.update(|cx| {
             assert!(
-                has_view_item(cx, "Agent Panel"),
+                has_view_item(cx, t!("agent_ui.agent_panel.agent_panel")),
                 "expected Agent Panel in the View menu when AI is enabled"
             );
             assert!(
-                has_view_item(cx, "Diagnostics"),
+                has_view_item(cx, t!("zed.quick_action_bar.diagnostics")),
                 "expected Diagnostics to be in View menu"
             );
         });
@@ -8548,11 +8549,11 @@ mod tests {
         });
         cx.update(|cx| {
             assert!(
-                !has_view_item(cx, "Agent Panel"),
+                !has_view_item(cx, t!("agent_ui.agent_panel.agent_panel")),
                 "expected Agent Panel to be removed from the View menu after disabling AI"
             );
             assert!(
-                has_view_item(cx, "Diagnostics"),
+                has_view_item(cx, t!("zed.quick_action_bar.diagnostics")),
                 "expected Diagnostics to remain in the View menu"
             );
         });
@@ -8567,11 +8568,11 @@ mod tests {
         cx.update(|cx| reload_keymaps(cx, Vec::new()));
         cx.update(|cx| {
             assert!(
-                has_view_item(cx, "Agent Panel"),
+                has_view_item(cx, t!("agent_ui.agent_panel.agent_panel")),
                 "expected Agent Panel back in the View menu after re-enabling AI"
             );
             assert!(
-                has_view_item(cx, "Diagnostics"),
+                has_view_item(cx, t!("zed.quick_action_bar.diagnostics")),
                 "expected Diagnostics to remain in the View menu"
             );
         });
@@ -8584,11 +8585,11 @@ mod tests {
         cx.update(|cx| reload_keymaps(cx, Vec::new()));
         cx.update(|cx| {
             assert!(
-                has_view_item(cx, "Agent Panel"),
+                has_view_item(cx, t!("agent_ui.agent_panel.agent_panel")),
                 "expected Agent Panel before disabling AI"
             );
             assert!(
-                has_view_item(cx, "Diagnostics"),
+                has_view_item(cx, t!("zed.quick_action_bar.diagnostics")),
                 "expected Diagnostics in the View menu"
             );
         });
@@ -8629,11 +8630,11 @@ mod tests {
 
         cx.update(|cx| {
             assert!(
-                !has_view_item(cx, "Agent Panel"),
+                !has_view_item(cx, t!("agent_ui.agent_panel.agent_panel")),
                 "expected Agent Panel removed even though the keymap file is malformed"
             );
             assert!(
-                has_view_item(cx, "Diagnostics"),
+                has_view_item(cx, t!("zed.quick_action_bar.diagnostics")),
                 "expected Diagnostics to remain in the View menu"
             );
         });
@@ -8651,11 +8652,11 @@ mod tests {
 
         cx.update(|cx| {
             assert!(
-                has_view_item(cx, "Agent Panel"),
+                has_view_item(cx, t!("agent_ui.agent_panel.agent_panel")),
                 "expected Agent Panel added back even though the keymap file is malformed"
             );
             assert!(
-                has_view_item(cx, "Diagnostics"),
+                has_view_item(cx, t!("zed.quick_action_bar.diagnostics")),
                 "expected Diagnostics to remain in the View menu"
             );
         });
@@ -10677,7 +10678,7 @@ mod tests {
         cx.get_menus()
             .expect("reload_keymaps should populate the menu bar")
             .iter()
-            .find(|menu| menu.name == "View")
+            .find(|menu| menu.name == t!("agent_ui.agent_notification.view"))
             .expect("expected a View menu")
             .items
             .iter()

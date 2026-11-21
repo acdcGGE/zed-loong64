@@ -1,3 +1,4 @@
+use zed_i18n::t;
 use editor::Editor;
 use fuzzy_nucleo::StringMatchCandidate;
 
@@ -644,11 +645,11 @@ impl BranchFilter {
         }
     }
 
-    fn label(self) -> &'static str {
+    fn label(self) -> SharedString {
         match self {
-            Self::All => "All Branches",
-            Self::Local => "Local Branches",
-            Self::Remote => "Remote Branches",
+            Self::All => t!("git_ui.branch_picker.all_branches").into(),
+            Self::Local => t!("git_ui.branch_picker.local_branches").into(),
+            Self::Remote => t!("git_ui.branch_picker.remote_branches").into(),
         }
     }
 }
@@ -905,7 +906,7 @@ impl Render for DeleteBranchTooltip {
         // merged check), so there is no separate force delete to offer for them.
         if self.is_remote {
             return Tooltip::with_meta_in(
-                "Delete Local Tracking Branch",
+                t!("git_ui.branch_picker.delete_local_tracking_branch"),
                 Some(&branch_picker::DeleteBranch),
                 "Does not delete the branch on the remote",
                 &self.focus_handle,
@@ -924,7 +925,7 @@ impl Render for DeleteBranchTooltip {
             .unwrap_or(false);
         if force_delete {
             Tooltip::for_action_in(
-                "Force Delete Branch",
+                t!("git_ui.branch_picker.force_delete_branch"),
                 &branch_picker::ForceDeleteBranch,
                 &self.focus_handle,
                 cx,
@@ -932,7 +933,7 @@ impl Render for DeleteBranchTooltip {
             .into_any_element()
         } else {
             Tooltip::with_meta_in(
-                "Delete Branch",
+                t!("git_ui.branch_picker.delete_branch"),
                 Some(&branch_picker::DeleteBranch),
                 concat!("Hold ", ui::alt_key_name!(), " to force delete"),
                 &self.focus_handle,
@@ -1079,7 +1080,7 @@ impl BranchListDelegate {
         let focus_handle = self.focus_handle.clone();
         move |_, cx| {
             Tooltip::for_action_in(
-                "Filter Branches",
+                t!("git_ui.branch_picker.filter_branches"),
                 &branch_picker::ToggleFilterMenu,
                 &focus_handle,
                 cx,
@@ -1111,7 +1112,7 @@ impl BranchListDelegate {
 
             Ok(())
         })
-        .detach_and_prompt_err("Failed to create branch", window, cx, |e, _, _| {
+        .detach_and_prompt_err(t!("git_ui.branch_picker.create_branch_failed").as_ref(), window, cx, |e, _, _| {
             Some(e.to_string())
         });
         cx.emit(DismissEvent);
@@ -1131,7 +1132,7 @@ impl BranchListDelegate {
         let receiver = repo.update(cx, |repo, _| repo.create_remote(remote_name, remote_url));
 
         cx.background_spawn(async move { receiver.await? })
-            .detach_and_prompt_err("Failed to create remote", window, cx, |e, _, _cx| {
+            .detach_and_prompt_err(t!("git_ui.branch_picker.create_remote_failed").as_ref(), window, cx, |e, _, _cx| {
                 Some(e.to_string())
             });
         cx.emit(DismissEvent);
@@ -1190,7 +1191,10 @@ impl BranchListDelegate {
                                 PromptLevel::Warning,
                                 &prompt_message,
                                 None,
-                                &["Force Delete", "Cancel"],
+                                &[
+                                    t!("git_ui.branch_picker.force_delete").as_ref(),
+                                    t!("git_ui.common.cancel").as_ref(),
+                                ],
                                 cx,
                             )
                         })?;
@@ -1286,11 +1290,11 @@ impl PickerDelegate for BranchListDelegate {
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
         match self.state {
-            PickerState::List if self.is_select_only() => "Select a branch…",
+            PickerState::List if self.is_select_only() => t!("git_ui.branch_picker.placeholder_select_branch"),
             PickerState::List | PickerState::NewRemote | PickerState::NewBranch => {
-                "Switch or type to create a branch…"
+                t!("git_ui.branch_picker.placeholder_switch_or_create")
             }
-            PickerState::CreateRemote(_) => "Enter a name for this remote…",
+            PickerState::CreateRemote(_) => t!("git_ui.branch_picker.placeholder_remote_name"),
         }
         .into()
     }
@@ -1298,7 +1302,7 @@ impl PickerDelegate for BranchListDelegate {
     fn no_matches_text(&self, _window: &mut Window, _cx: &mut App) -> Option<SharedString> {
         match self.state {
             PickerState::CreateRemote(_) => {
-                Some(SharedString::new_static("Remote name can't be empty"))
+                Some(t!("git_ui.branch_picker.remote_name_empty").into())
             }
             _ => None,
         }
@@ -1619,7 +1623,7 @@ impl PickerDelegate for BranchListDelegate {
                     anyhow::Ok(())
                 })
                 .detach_and_prompt_err(
-                    "Failed to change branch",
+                    t!("git_ui.branch_picker.change_branch_failed").as_ref(),
                     window,
                     cx,
                     |_, _, _| None,
@@ -1729,7 +1733,7 @@ impl PickerDelegate for BranchListDelegate {
         };
 
         let entry_title = match entry {
-            Entry::NewUrl { .. } => Label::new("Create Remote Repository")
+            Entry::NewUrl { .. } => Label::new(t!("git_ui.branch_picker.create_remote_repository"))
                 .single_line()
                 .truncate()
                 .into_any_element(),
@@ -1857,7 +1861,7 @@ impl PickerDelegate for BranchListDelegate {
                                         {
                                             format!("Based off {}", current_branch)
                                         } else {
-                                            "Based off the current branch".to_string()
+                                            t!("git_ui.branch_picker.based_off_current_branch").to_string()
                                         }
                                     }
                                     Entry::Branch { .. } => String::new(),
@@ -1909,7 +1913,7 @@ impl PickerDelegate for BranchListDelegate {
                                         })
                                         .when(!has_commit, |this| {
                                             this.child(
-                                                Label::new("No commits found")
+                                                Label::new(t!("git_ui.branch_picker.no_commits_found"))
                                                     .color(Color::Muted)
                                                     .size(LabelSize::Small),
                                             )
@@ -1936,14 +1940,14 @@ impl PickerDelegate for BranchListDelegate {
                                                 .child(Label::new(branch_name.clone()))
                                                 .when(is_select_only && is_checked, |this| {
                                                     this.child(
-                                                        Label::new("Selected Branch")
+                                                        Label::new(t!("git_ui.branch_picker.selected_branch"))
                                                             .size(LabelSize::Small)
                                                             .color(Color::Muted),
                                                     )
                                                 })
                                                 .when(is_head, |this| {
                                                     this.child(
-                                                        Label::new("Current Branch")
+                                                        Label::new(t!("git_ui.branch_picker.current_branch"))
                                                             .size(LabelSize::Small)
                                                             .color(Color::Muted),
                                                     )
@@ -1994,9 +1998,9 @@ impl PickerDelegate for BranchListDelegate {
                         });
                 starts_section.then(|| {
                     if branch.is_remote() {
-                        ("Remote Branches", ix != 0)
+                        (t!("git_ui.branch_picker.remote_branches"), ix != 0)
                     } else {
-                        ("Local Branches", false)
+                        (t!("git_ui.branch_picker.local_branches"), false)
                     }
                 })
             });
@@ -2062,9 +2066,9 @@ impl PickerDelegate for BranchListDelegate {
 
                 let selected_branch = selected_entry.and_then(|entry| entry.as_branch());
                 let delete_label = if selected_branch.is_some_and(|branch| branch.is_remote()) {
-                    "Delete Local Tracking Branch"
+                    t!("git_ui.branch_picker.delete_local_tracking_branch")
                 } else {
-                    "Delete"
+                    t!("git_ui.common.delete")
                 };
 
                 let delete_and_select_btns = h_flex()
@@ -2092,7 +2096,7 @@ impl PickerDelegate for BranchListDelegate {
                         },
                     )
                     .child(
-                        Button::new("switch_branch", "Switch")
+                        Button::new("switch_branch", t!("git_ui.branch_picker.switch"))
                             .key_binding(
                                 KeyBinding::for_action_in(&menu::Confirm, &focus_handle, cx)
                                     .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -2107,7 +2111,7 @@ impl PickerDelegate for BranchListDelegate {
                         .justify_end()
                         .map(|this| match branch_from_default_button {
                             Some(button) => this.child(button).child(
-                                Button::new("create", "Create")
+                                Button::new("create", t!("git_ui.common.create"))
                                     .key_binding(
                                         KeyBinding::for_action_in(
                                             &menu::Confirm,
@@ -2152,7 +2156,7 @@ impl PickerDelegate for BranchListDelegate {
                             this.child(button)
                         })
                         .child(
-                            Button::new("create-new-branch", "Create")
+                            Button::new("create-new-branch", t!("git_ui.common.create"))
                                 .key_binding(
                                     KeyBinding::for_action_in(&menu::Confirm, &focus_handle, cx)
                                         .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -2168,7 +2172,7 @@ impl PickerDelegate for BranchListDelegate {
                 footer_container()
                     .justify_end()
                     .child(
-                        Button::new("confirm-create-remote", "Confirm")
+                        Button::new("confirm-create-remote", t!("git_ui.common.confirm"))
                             .key_binding(
                                 KeyBinding::for_action_in(&menu::Confirm, &focus_handle, cx)
                                     .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -2682,7 +2686,7 @@ mod tests {
         cx.run_until_parked();
         assert!(cx.has_pending_prompt());
 
-        cx.simulate_prompt_answer("Force Delete");
+        cx.simulate_prompt_answer(t!("git_ui.branch_picker.force_delete"));
         cx.run_until_parked();
 
         let repo_branches = branch_list
@@ -2761,7 +2765,7 @@ mod tests {
         cx.run_until_parked();
         assert!(cx.has_pending_prompt());
 
-        cx.simulate_prompt_answer("Cancel");
+        cx.simulate_prompt_answer(t!("git_ui.common.cancel"));
         cx.run_until_parked();
         assert!(!cx.has_pending_prompt());
 

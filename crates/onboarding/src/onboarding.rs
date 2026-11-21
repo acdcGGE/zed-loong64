@@ -1,3 +1,4 @@
+use zed_i18n::t;
 use crate::multibuffer_hint::MultibufferHint;
 use client::{Client, UserStore, zed_urls};
 use cloud_api_types::Plan;
@@ -317,7 +318,7 @@ impl Render for Onboarding {
             .image_cache(gpui::retain_all("onboarding-page"))
             .key_context({
                 let mut ctx = KeyContext::new_with_defaults(cx.platform_info().os);
-                ctx.add("Onboarding");
+                ctx.add(t!("onboarding.onboarding.tab_title"));
                 ctx.add("menu");
                 ctx
             })
@@ -352,11 +353,11 @@ impl Render for Onboarding {
                                     .child(
                                         v_flex()
                                             .child(
-                                                Headline::new("Welcome to Zed")
+                                                Headline::new(t!("onboarding.onboarding.welcome_to_zed"))
                                                     .size(HeadlineSize::Small),
                                             )
                                             .child(
-                                                Label::new("The editor for what's next")
+                                                Label::new(t!("onboarding.onboarding.tagline"))
                                                     .color(Color::Muted)
                                                     .size(LabelSize::Small)
                                                     .italic(),
@@ -364,7 +365,7 @@ impl Render for Onboarding {
                                     ),
                             )
                             .child({
-                                Button::new("finish_setup", "Finish Setup")
+                                Button::new("finish_setup", t!("onboarding.onboarding.finish_setup"))
                                     .style(ButtonStyle::Filled)
                                     .size(ButtonSize::Medium)
                                     .width(rems_from_px(200_f32))
@@ -411,7 +412,7 @@ impl Item for Onboarding {
     type Event = ItemEvent;
 
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "Onboarding".into()
+        t!("onboarding.onboarding.tab_title").into()
     }
 
     fn telemetry_event_text(&self) -> Option<&'static str> {
@@ -500,7 +501,7 @@ pub async fn handle_import_vscode_settings(
                     gpui::PromptLevel::Info,
                     &format!("Could not find or load a {source} settings file"),
                     None,
-                    &["OK"],
+                    &[t!("auto_update.ok").as_ref()],
                 );
                 return;
             }
@@ -516,7 +517,10 @@ pub async fn handle_import_vscode_settings(
                 truncate_and_remove_front(&vscode_settings.path.to_string_lossy(), 128),
             ),
             None,
-            &["Import", "Cancel"],
+            &[
+                t!("onboarding.onboarding.import").as_ref(),
+                t!("onboarding.onboarding.cancel").as_ref(),
+            ],
         );
         let result = cx.spawn(async move |_| prompt.await.ok()).await;
         if result != Some(0) {
@@ -564,7 +568,7 @@ pub async fn handle_import_vscode_settings(
             }
             Err(_) => {
                 let error_toast = StatusToast::new(
-                    "Failed to import settings. See log for details",
+                    t!("onboarding.onboarding.import_failed"),
                     cx,
                     |this, _| {
                         this.icon(

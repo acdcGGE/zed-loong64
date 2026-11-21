@@ -12,6 +12,7 @@
 .blob_store
 .build
 .claude/settings.local.json
+.claude/*.local.md
 .envrc
 .flatpak-builder
 .idea
@@ -61,4 +62,21 @@ crates/docs_preprocessor/actions.json
 .nixos-test-history
 
 .local*
+.codegraph
+AGS_SDK-6.3.0/
+conpty/
+inno/x86_64/
+AGS_SDK_v6.3.0.zip
+Microsoft.Windows.Console.ConPTY.1.23.251216003.nupkg
+tmp/
 .cache
+
+# 本地 ffmpeg 开发库（各平台构建产物，不入库）
+/ffmpeg-dev/
+
+# 本地工具与调试产物（不入库）
+.dsh/
+.playwright-mcp/
+.qmd/
+Microsoft.Windows.Console.ConPTY.*.nupkg
+example.com.png

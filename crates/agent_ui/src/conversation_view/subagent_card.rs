@@ -5,6 +5,7 @@ use acp_thread::{
 use agent_client_protocol::v2::schema as acp_v2;
 use gpui::{App, Entity, SharedString};
 use std::{fmt, ops::Range};
+use zed_i18n::t;
 
 use super::thread_view::subagent_label;
 
@@ -284,10 +285,10 @@ impl SubagentCardState {
             thread_title.or(label)
         };
         title.unwrap_or_else(|| match self.status {
-            SubagentStatus::Canceled => "Subagent Canceled".into(),
-            SubagentStatus::Failed => "Subagent Failed".into(),
+            SubagentStatus::Canceled => t!("agent_ui.thread_view.subagent_canceled").into(),
+            SubagentStatus::Failed => t!("agent_ui.thread_view.subagent_failed").into(),
             SubagentStatus::Running | SubagentStatus::Completed | SubagentStatus::Unknown => {
-                "Spawning Agent…".into()
+                t!("agent_ui.thread_view.spawning_agent").into()
             }
         })
     }

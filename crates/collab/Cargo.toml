@@ -129,6 +129,7 @@ theme_settings = { workspace = true, features = ["test-support"] }
 title_bar = { workspace = true, features = ["test-support"] }
 
 unindent.workspace = true
+url.workspace = true
 util.workspace = true
 workspace = { workspace = true, features = ["test-support"] }
 worktree = { workspace = true, features = ["test-support"] }

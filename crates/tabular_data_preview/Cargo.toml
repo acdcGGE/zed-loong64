@@ -22,6 +22,7 @@ serde.workspace = true
 serde_json.workspace = true
 schemars.workspace = true
 text.workspace = true
+zed_i18n.workspace = true
 util.workspace = true
 
 [dev-dependencies]

@@ -1,3 +1,4 @@
+use zed_i18n::t;
 use super::auth_status::{
     ConnectionAuthStatus, from_v1 as auth_status_from_v1, update_v1 as handle_auth_status_update,
 };
@@ -727,8 +728,8 @@ impl AcpConnection {
             });
             let meta = acp_v2::Meta::from_iter([("terminal-auth".to_string(), value)]);
             vec![acp_v2::AuthMethod::Agent(
-                acp_v2::AuthMethodAgent::new(GEMINI_TERMINAL_AUTH_METHOD_ID, "Login")
-                    .description("Login with your Google or Vertex AI account")
+                acp_v2::AuthMethodAgent::new(GEMINI_TERMINAL_AUTH_METHOD_ID, t!("agent_servers.auth.login"))
+                    .description(t!("agent_servers.auth.login_description"))
                     .meta(meta),
             )]
         } else {
@@ -2196,7 +2197,7 @@ pub mod test_support {
                                     ),
                             )
                             .auth_methods(vec![acp::AuthMethod::Agent(acp::AuthMethodAgent::new(
-                                "login", "Login",
+                                "login", t!("agent_servers.auth.login"),
                             ))]),
                     )
                 },
@@ -3128,7 +3129,7 @@ mod tests {
             let source = json!({"sessionId": "v2-terminal-session", "title": "Permission title",
                 "description": "Separate explanation", "subject": subject,
                 "options": [
-                    {"optionId": "allow", "name": "Allow", "kind": "allow_once",
+                    {"optionId": "allow", "name": t!("agent_ui.thread_view.allow"), "kind": "allow_once",
                         "_meta": {"scope": "allow"}},
                     {"optionId": "opaque", "name": "Unknown hint", "kind": "_future",
                         "_meta": {"scope": "option", "retain": [null, 7]}}
@@ -3186,15 +3187,15 @@ mod tests {
         for (session_id, options, expected_code) in [
             (
                 "unknown",
-                json!([{"optionId": "allow", "name": "Allow", "kind": "allow_once"}]),
+                json!([{"optionId": "allow", "name": t!("agent_ui.thread_view.allow"), "kind": "allow_once"}]),
                 ErrorCode::ResourceNotFound,
             ),
             ("v2-terminal-session", json!([]), ErrorCode::InvalidParams),
             (
                 "v2-terminal-session",
                 json!([
-                {"optionId": "same", "name": "Allow", "kind": "allow_once"},
-                {"optionId": "same", "name": "Reject", "kind": "reject_once"}]),
+                {"optionId": "same", "name": t!("agent_ui.thread_view.allow"), "kind": "allow_once"},
+                {"optionId": "same", "name": t!("agent_ui.agent_diff.reject"), "kind": "reject_once"}]),
                 ErrorCode::InvalidParams,
             ),
         ] {
@@ -3231,7 +3232,7 @@ mod tests {
             "Same subject",
             vec![acp_v2::PermissionOption::new(
                 "allow",
-                "Allow",
+                t!("agent_ui.thread_view.allow"),
                 acp_v2::PermissionOptionKind::AllowOnce,
             )],
         )
@@ -3686,7 +3687,7 @@ mod tests {
         let mut listed = AgentSessionInfo::new(session_id.clone());
         listed.title = Some("Saved list title".into());
         harness.thread.update(cx, |thread, cx| {
-            thread.set_provisional_title("Preview".into(), cx);
+            thread.set_provisional_title(t!("picker.footer.preview").into(), cx);
         });
         let titles = Rc::new(RefCell::new(Vec::new()));
         let _subscription = cx.update(|cx| {
@@ -3702,7 +3703,7 @@ mod tests {
         for (patch, expected_title, expected_list_title, expected_meta, expected_timestamp) in [
             (
                 json!({"updatedAt": "2026-10-01T10:20:30Z", "_meta": {"scope": "session"}}),
-                Some("Preview"),
+                Some(t!("picker.footer.preview")),
                 Some("Saved list title"),
                 Some(v2_terminal_meta("session")),
                 Some("2026-10-01T10:20:30+00:00"),
@@ -3855,9 +3856,9 @@ mod tests {
             })
         });
         let first = json!([
-            {"configId": "opaque/手動", "name": "Mode", "description": "Select a mode",
+            {"configId": "opaque/手動", "name": t!("settings_ui.page_data.icon_theme_title_2"), "description": "Select a mode",
                 "category": "mode", "type": "select", "currentValue": "custom",
-                "options": [{"value": "custom", "name": "Custom", "description": "Offered",
+                "options": [{"value": "custom", "name": t!("title_bar.user_menu.layout_custom"), "description": "Offered",
                     "_meta": {"scope": "value", "retain": [null, 7]}}],
                 "_meta": {"scope": "option"}},
             {"configId": "future", "name": "Future", "type": "_future",
@@ -3881,7 +3882,7 @@ mod tests {
         let mut updates = cx.update(|cx| owner.watch(cx).expect("config subscription"));
         drop(updates.borrow());
         for options in [
-            json!([{"configId": "enabled", "name": "Enabled", "type": "boolean",
+            json!([{"configId": "enabled", "name": t!("settings_ui.page_data.diagnostics_inline_enabled_title"), "type": "boolean",
                 "currentValue": true, "_meta": {"scope": "replacement"}}]),
             json!([]),
         ] {
@@ -5877,7 +5878,7 @@ mod tests {
         assert_eq!(
             harness.connection.auth_methods(),
             &[acp_v2::AuthMethod::Agent(acp_v2::AuthMethodAgent::new(
-                "login", "Login"
+                "login", t!("agent_servers.auth.login")
             ))]
         );
         let method_id = acp_v2::AuthMethodId::new("login");
@@ -5988,7 +5989,7 @@ mod tests {
                 ("EXTRA".into(), "2".into()),
             ])),
         };
-        let method = acp_v2::AuthMethodTerminal::new("login", "Login");
+        let method = acp_v2::AuthMethodTerminal::new("login", t!("agent_servers.auth.login"));
 
         let task = terminal_auth_task(&command, &AgentId::new("test-agent"), &method);
 
@@ -6010,7 +6011,7 @@ mod tests {
     fn legacy_terminal_auth_task_parses_meta_and_retries_session() {
         let method_id = acp_v2::AuthMethodId::new("legacy-login");
         let method = acp_v2::AuthMethod::Agent(
-            acp_v2::AuthMethodAgent::new(method_id.clone(), "Login").meta(acp_v2::Meta::from_iter(
+            acp_v2::AuthMethodAgent::new(method_id.clone(), t!("agent_servers.auth.login")).meta(acp_v2::Meta::from_iter(
                 [(
                     "terminal-auth".to_string(),
                     serde_json::json!({
@@ -6042,7 +6043,7 @@ mod tests {
     fn legacy_terminal_auth_task_returns_none_for_invalid_meta() {
         let method_id = acp_v2::AuthMethodId::new("legacy-login");
         let method = acp_v2::AuthMethod::Agent(
-            acp_v2::AuthMethodAgent::new(method_id.clone(), "Login").meta(acp_v2::Meta::from_iter(
+            acp_v2::AuthMethodAgent::new(method_id.clone(), t!("agent_servers.auth.login")).meta(acp_v2::Meta::from_iter(
                 [(
                     "terminal-auth".to_string(),
                     serde_json::json!({
@@ -6061,7 +6062,7 @@ mod tests {
     fn first_class_terminal_auth_takes_precedence_over_legacy_meta() {
         let method_id = acp_v2::AuthMethodId::new("login");
         let method = acp_v2::AuthMethod::Terminal(
-            acp_v2::AuthMethodTerminal::new(method_id, "Login")
+            acp_v2::AuthMethodTerminal::new(method_id, t!("agent_servers.auth.login"))
                 .args(vec!["/auth".into()])
                 .env(vec![acp_v2::EnvVariable::new("AUTH_MODE", "first-class")])
                 .meta(acp_v2::Meta::from_iter([(
@@ -6809,7 +6810,7 @@ mod tests {
         efforts: &[&str],
     ) -> Vec<acp::SessionConfigOption> {
         let mut options = vec![serde_json::json!({
-            "id": "model", "name": "Model", "category": "model", "type": "select",
+            "id": "model", "name": t!("settings_ui.edit_prediction_provider_setup.edit_predictions_codestral_model_title"), "category": "model", "type": "select",
             "currentValue": model,
             "options": [
                 {"value": "initial-model", "name": "Initial model"},
@@ -8600,7 +8601,7 @@ exit 7
                 acp::SessionUpdate::ConfigOptionUpdate(acp::ConfigOptionUpdate::new(vec![
                     acp::SessionConfigOption::select(
                         "model",
-                        "Model",
+                        t!("settings_ui.edit_prediction_provider_setup.edit_predictions_codestral_model_title"),
                         model,
                         vec![acp::SessionConfigSelectOption::new(model, model)],
                     ),

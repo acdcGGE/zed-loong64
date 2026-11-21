@@ -2,6 +2,7 @@ pub mod project_panel_settings;
 mod undo;
 mod utils;
 
+use zed_i18n::t;
 use anyhow::{Context as _, Result};
 use client::{ErrorCode, ErrorExt};
 use collections::{BTreeSet, HashMap, hash_map};
@@ -702,8 +703,8 @@ enum RemoveEntryTask {
 
 struct RemovalPrompt {
     message: String,
-    detail: Option<&'static str>,
-    confirmation_label: &'static str,
+    detail: Option<String>,
+    confirmation_label: String,
 }
 
 enum RemovalKind {
@@ -965,12 +966,12 @@ impl ProjectPanel {
                                     true,
                                     window, cx,
                                 )
-                                .detach_and_prompt_err("Failed to open file", window, cx, move |e, _, _| {
+                                .detach_and_prompt_err(t!("project_panel.prompt.failed_to_open_file").as_ref(), window, cx, move |e, _, _| {
                                     match e.error_code() {
                                         ErrorCode::Disconnected => if is_via_ssh {
-                                            Some("Disconnected from SSH host".to_string())
+                                            Some(t!("project_panel.prompt.disconnected_from_ssh").to_string())
                                         } else {
-                                            Some("Disconnected from remote project".to_string())
+                                            Some(t!("project_panel.prompt.disconnected_from_remote").to_string())
                                         },
                                         ErrorCode::UnsharedItem => Some(format!(
                                             "{} is not shared by the host. This could be because it has been marked as `private`",
@@ -1254,20 +1255,20 @@ impl ProjectPanel {
                             .separator()
                             .action("Copy Path", Box::new(zed_actions::workspace::CopyPath))
                             .action(
-                                "Copy Relative Path",
+                                t!("project_panel.context_menu.copy_relative_path"),
                                 Box::new(zed_actions::workspace::CopyRelativePath),
                             )
                             .when(has_git_repo, |menu| {
                                 menu.separator()
                                     .when(!is_dir && self.has_git_changes(entry_id), |menu| {
                                         menu.action(
-                                            "Restore File",
+                                            t!("project_panel.context_menu.restore_file"),
                                             Box::new(git::RestoreFile { skip_prompt: false }),
                                         )
                                     })
                                     .action("Add to .gitignore", Box::new(git::AddToGitignore))
                                     .action(
-                                        "Add to .git/info/exclude",
+                                        t!("project_panel.context_menu.add_to_git_info_exclude"),
                                         Box::new(git::AddToGitInfoExclude),
                                     )
                                     .when(has_history, |menu| {
@@ -1275,11 +1276,11 @@ impl ProjectPanel {
                                     })
                                     .when(!is_dir, |menu| {
                                         menu.action(
-                                            "Open File Permalink",
+                                            t!("project_panel.context_menu.open_file_permalink"),
                                             git::OpenFilePermalink.boxed_clone(),
                                         )
                                         .action(
-                                            "Copy File Permalink",
+                                            t!("project_panel.context_menu.copy_file_permalink"),
                                             git::CopyFilePermalink.boxed_clone(),
                                         )
                                     })
@@ -1296,7 +1297,7 @@ impl ProjectPanel {
                             .when(!is_collab && is_root, |menu| {
                                 menu.separator()
                                     .action(
-                                        "Add Folders to Project…",
+                                        t!("project_panel.context_menu.add_folders_to_project"),
                                         Box::new(workspace::AddFolderToProject),
                                     )
                                     .action("Remove from Project", Box::new(RemoveFromProject))
@@ -1305,7 +1306,7 @@ impl ProjectPanel {
                                 menu.separator()
                                     .action("Expand All", Box::new(ExpandSelectedEntryAndChildren))
                                     .action(
-                                        "Collapse All",
+                                        t!("project_panel.context_menu.collapse_all"),
                                         Box::new(CollapseSelectedEntryAndChildren),
                                     )
                             })
@@ -2080,14 +2081,14 @@ impl ProjectPanel {
             let trimmed_filename = filename.trim();
             if trimmed_filename.is_empty() {
                 edit_state.validation_state =
-                    ValidationState::Error("File or directory name cannot be empty.".to_string());
+                    ValidationState::Error(t!("project_panel.validation.empty_name").to_string());
                 cx.notify();
                 return;
             }
 
             if trimmed_filename != filename {
                 edit_state.validation_state = ValidationState::Warning(
-                    "File or directory name contains leading or trailing whitespace.".to_string(),
+                    t!("project_panel.validation.whitespace").to_string(),
                 );
                 cx.notify();
                 return;
@@ -2096,7 +2097,7 @@ impl ProjectPanel {
 
             let Ok(filename) = RelPath::from_unix_str(trimmed_filename) else {
                 edit_state.validation_state = ValidationState::Warning(
-                    "File or directory name contains leading or trailing whitespace.".to_string(),
+                    t!("project_panel.validation.whitespace").to_string(),
                 );
                 cx.notify();
                 return;
@@ -2672,7 +2673,7 @@ impl ProjectPanel {
 
             let answer = if !action.skip_prompt {
                 let prompt = format!("Discard changes to {}?", MarkdownInlineCode(&file_name));
-                Some(window.prompt(PromptLevel::Info, &prompt, None, &["Restore", "Cancel"], cx))
+                Some(window.prompt(PromptLevel::Info, &prompt, None, &[t!("project_panel.prompt.restore"), t!("project_panel.prompt.cancel")], cx))
             } else {
                 None
             };
@@ -2846,11 +2847,15 @@ impl ProjectPanel {
         S: AsRef<str>,
     {
         let (message_start, confirmation_label, detail) = match kind {
-            RemovalKind::Trash => ("Do you want to trash", "Trash", None),
+            RemovalKind::Trash => (
+                "Do you want to trash",
+                t!("project_panel.context_menu.trash").to_string(),
+                None,
+            ),
             RemovalKind::Delete => (
                 "Are you sure you want to permanently delete",
-                "Delete",
-                Some("This cannot be undone."),
+                t!("project_panel.context_menu.delete").to_string(),
+                Some(t!("project_panel.prompt.cannot_be_undone").to_string()),
             ),
         };
 
@@ -2953,8 +2958,11 @@ impl ProjectPanel {
                 Some(window.prompt(
                     PromptLevel::Info,
                     &prompt.message,
-                    prompt.detail,
-                    &[prompt.confirmation_label, "Cancel"],
+                    prompt.detail.as_deref(),
+                    &[
+                        prompt.confirmation_label.as_str(),
+                        t!("project_panel.prompt.cancel").as_ref(),
+                    ],
                     cx,
                 ))
             } else {
@@ -3934,7 +3942,7 @@ impl ProjectPanel {
             files: false,
             directories: true,
             multiple: false,
-            prompt: Some("Download".into()),
+            prompt: Some(t!("project_panel.prompt.download").into()),
         });
 
         let fs = self.fs.clone();
@@ -5105,7 +5113,7 @@ impl ProjectPanel {
                                 PromptLevel::Info,
                                 &prompt_message,
                                 None,
-                                &["Replace", "Cancel"],
+                                &[t!("project_panel.prompt.replace"), t!("project_panel.prompt.cancel")],
                                 cx,
                             )
                         })?
@@ -6660,7 +6668,7 @@ impl ProjectPanel {
                                         Tooltip::with_meta(
                                             path.to_string_lossy().into_owned(),
                                             None,
-                                            "Symbolic Link",
+                                            t!("project_panel.tooltip.symbolic_link"),
                                             cx,
                                         )
                                     })
@@ -8178,7 +8186,7 @@ impl Render for ProjectPanel {
                 .size_full()
                 .child(
                     ProjectEmptyState::new(
-                        "Project Panel",
+                        t!("project_panel.empty_state.title"),
                         focus_handle.clone(),
                         KeyBinding::for_action_in(&workspace::Open::default(), &focus_handle, cx),
                     )
@@ -8313,7 +8321,7 @@ impl Panel for ProjectPanel {
     }
 
     fn persistent_name() -> &'static str {
-        "Project Panel"
+        PROJECT_PANEL_KEY
     }
 
     fn panel_key() -> &'static str {

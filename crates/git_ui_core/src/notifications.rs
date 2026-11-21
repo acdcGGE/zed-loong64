@@ -5,6 +5,7 @@ use notifications::status_toast::StatusToast;
 use proto::RpcError;
 use ui::prelude::*;
 use workspace::Workspace;
+use zed_i18n::t;
 
 pub fn open_output(
     operation: impl Into<SharedString>,
@@ -24,7 +25,7 @@ pub fn open_output(
     let editor = cx.new(|cx| {
         let mut editor = Editor::for_buffer(buffer, None, window, cx);
         editor.buffer().update(cx, |buffer, cx| {
-            buffer.set_title(format!("Output from git {operation}"), cx);
+            buffer.set_title(t!("git_ui_core.output_title", operation = operation), cx);
         });
         editor.set_read_only(true);
         editor
@@ -41,11 +42,11 @@ fn is_non_fast_forward_error(error_message: &str) -> bool {
             && (error_message.contains("behind") || error_message.contains("remote")))
 }
 
-fn git_error_toast_title(action: &str, message: &str) -> String {
+fn git_error_toast_title(action: &str, message: &str) -> SharedString {
     if action == "push" && is_non_fast_forward_error(message) {
-        "Push rejected: fetch and integrate remote changes before pushing again".to_string()
+        t!("git_ui_core.push_rejected").into()
     } else {
-        format!("git {action} failed")
+        t!("git_ui_core.git_action_failed", action = action).into()
     }
 }
 
@@ -73,7 +74,7 @@ pub fn show_error_toast(
                             .size(IconSize::Small)
                             .color(Color::Error),
                     )
-                    .action("View Log", move |window, cx| {
+                    .action(t!("git_ui_core.view_log"), move |window, cx| {
                         let message = message.clone();
                         let action = action.clone();
                         workspace_weak

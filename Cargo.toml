@@ -154,6 +154,7 @@ members = [
     "crates/node_runtime",
     "crates/notifications",
     "crates/oauth_callback_server",
+    "crates/office_preview",
     "crates/ollama",
     "crates/onboarding",
     "crates/open_ai",
@@ -205,6 +206,7 @@ members = [
     "crates/snippet",
     "crates/snippet_provider",
     "crates/snippets_ui",
+    "crates/sqlite_viewer",
     "crates/sqlez",
     "crates/sqlez_macros",
     "crates/streaming_diff",
@@ -251,6 +253,7 @@ members = [
     "crates/zed_actions",
     "crates/zed_credentials_provider",
     "crates/zed_env_vars",
+    "crates/zed_i18n",
     "crates/zeta_prompt",
     "crates/zlog",
     "crates/zlog_settings",
@@ -276,6 +279,8 @@ members = [
     "tooling/xtask",
 ]
 default-members = ["crates/zed"]
+# third_party 下的 vendor crate 自带独立 workspace，不纳入本 workspace
+exclude = ["third_party"]
 
 [workspace.package]
 publish = false
@@ -433,6 +438,7 @@ net = { path = "crates/net" }
 node_runtime = { path = "crates/node_runtime" }
 notifications = { path = "crates/notifications" }
 oauth_callback_server = { path = "crates/oauth_callback_server" }
+office_preview = { path = "crates/office_preview" }
 ollama = { path = "crates/ollama" }
 onboarding = { path = "crates/onboarding" }
 open_ai = { path = "crates/open_ai" }
@@ -483,6 +489,7 @@ sidebar = { path = "crates/sidebar" }
 snippet = { path = "crates/snippet" }
 snippet_provider = { path = "crates/snippet_provider" }
 snippets_ui = { path = "crates/snippets_ui" }
+sqlite_viewer = { path = "crates/sqlite_viewer" }
 sqlez = { path = "crates/sqlez" }
 sqlez_macros = { path = "crates/sqlez_macros" }
 streaming_diff = { path = "crates/streaming_diff" }
@@ -526,6 +533,7 @@ x_ai_subscribed = { path = "crates/x_ai_subscribed" }
 zed_actions = { path = "crates/zed_actions" }
 zed_credentials_provider = { path = "crates/zed_credentials_provider" }
 zed_env_vars = { path = "crates/zed_env_vars" }
+zed_i18n = { path = "crates/zed_i18n" }
 zeta_prompt = { path = "crates/zeta_prompt" }
 zlog = { path = "crates/zlog" }
 zlog_settings = { path = "crates/zlog_settings" }
@@ -596,6 +604,7 @@ block2 = "0.6"
 brush-parser = "0.3"
 bytemuck = "1"
 bytes = "1.0"
+calamine = "0.36"
 cargo_metadata = "0.23"
 cargo_toml = "0.21"
 cbindgen = { version = "0.28.0", default-features = false }
@@ -698,6 +707,7 @@ linkify = "0.10.0"
 livekit = { version = "0.7.32", features = ["tokio", "rustls-tls-native-roots"] }
 log = { version = "0.4", default-features = false, features = ["std"] }
 lru = "0.16"
+rusqlite = { version = "0.32", features = ["bundled"] }
 lsp-types = { git = "https://github.com/zed-industries/lsp-types", rev = "82d7fc66ebdfabcfeb26ba16bbed9f3d26211fc3" }
 mach2 = "0.6"
 markup5ever_rcdom = "0.39"
@@ -841,6 +851,7 @@ parse_int = "0.9"
 partial-json-fixer = "0.5.3"
 pathfinder_geometry = "0.5"
 pciid-parser = "0.8.0"
+pdf-render = "1.0.0-beta.17"
 percent-encoding = "2.3.2"
 pet = { git = "https://github.com/zed-industries/python-environment-tools.git", rev = "5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f" }
 pet-conda = { git = "https://github.com/zed-industries/python-environment-tools.git", rev = "5aad7164bfc2a58977b103c8ef8fdd7302ed2e9f" }
@@ -868,6 +879,10 @@ pulldown-cmark = { version = "0.13.0", default-features = false }
 quick-xml = "0.41"
 quote = "1.0.9"
 rand = { version = "0.9", default-features = false, features = ["std", "std_rng", "os_rng"] }
+ratex-layout = "0.1.9"
+ratex-parser = "0.1.9"
+ratex-svg = { version = "0.1.9", features = ["embed-fonts"] }
+ratex-types = "0.1.9"
 raw-window-handle = "0.6"
 rayon = "1.8"
 regex = { version = "1.5", default-features = false, features = ["std", "perf"] }
@@ -890,6 +905,7 @@ jupyter-zmq-client = { version = "3.0.0", default-features = false, features = [
     "async-dispatcher-runtime", "aws-lc-rs"
 ] }
 rust-embed = { version = "8.11", features = ["include-exclude", "compression"] }
+rust-i18n = "3.1"
 rustc-hash = "2.1.0"
 rustix = { version = "1.1", features = ["fs"] }
 rustls = "0.23.26"
@@ -1018,6 +1034,7 @@ xkbcommon = { version = "0.8", default-features = false }
 yaml-rust2 = { version = "0.8", default-features = false }
 yawc = { version = "0.4", default-features = false }
 zeroize = "1.8"
+zip = { version = "8", default-features = false, features = ["deflate"] }
 zstd = { version = "0.13", default-features = false, features = ["legacy", "arrays"] }
 
 [workspace.dependencies.windows]
@@ -1053,8 +1070,10 @@ windows-capture = { git = "https://github.com/zed-industries/windows-capture.git
 calloop = { git = "https://github.com/zed-industries/calloop", rev = "3759371fee14c40066d64777e2a36b6ffcc22590" }
 livekit = { git = "https://github.com/zed-industries/livekit-rust-sdks", rev = "fbda05eb278b4a7c5be8fc9b2a92e9b62e732236" }
 libwebrtc = { git = "https://github.com/zed-industries/livekit-rust-sdks", rev = "fbda05eb278b4a7c5be8fc9b2a92e9b62e732236" }
-notify = { git = "https://github.com/zed-industries/notify", rev = "d842f16b2716bd60f09caf3ae3a894237ab38f54" }
-notify-types = { git = "https://github.com/zed-industries/notify", rev = "d842f16b2716bd60f09caf3ae3a894237ab38f54" }
+# notify 已 vendor 至 third_party/notify（zed-industries fork + Windows 溢出修复），
+# 维护说明见 third_party/notify/ZED_VENDOR.md
+notify = { path = "third_party/notify/notify" }
+notify-types = { path = "third_party/notify/notify-types" }
 webrtc-sys = { git = "https://github.com/zed-industries/livekit-rust-sdks", rev = "fbda05eb278b4a7c5be8fc9b2a92e9b62e732236" }
 # Avoid panicking when a failed EGL call reports EGL_SUCCESS.
 # https://github.com/timothee-haudebourg/khronos-egl/pull/37

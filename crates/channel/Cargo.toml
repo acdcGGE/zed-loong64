@@ -30,6 +30,7 @@ rpc.workspace = true
 settings.workspace = true
 text.workspace = true
 util.workspace = true
+zed_i18n.workspace = true
 
 [dev-dependencies]
 collections = { workspace = true, features = ["test-support"] }

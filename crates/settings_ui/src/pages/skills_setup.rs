@@ -1,3 +1,4 @@
+use zed_i18n::t;
 use agent_skills::{Skill, SkillIndex, SkillSource, encode_skill_share_link};
 use anyhow::Context as _;
 use fs::RemoveOptions;
@@ -278,8 +279,8 @@ pub(crate) fn render_skills_setup_page(
                         format!("No global skills installed on {remote_host}.")
                     }
                     (SettingsUiFile::User, None) => "No global skills installed.".to_string(),
-                    (SettingsUiFile::Project(_), _) => "No project skills found.".to_string(),
-                    _ => "No skills available for this context.".to_string(),
+                    (SettingsUiFile::Project(_), _) => t!("settings_ui.skills_setup.no_project_skills").to_string(),
+                    _ => t!("settings_ui.skills_setup.no_context_skills").to_string(),
                 };
 
                 this.px_8().items_center().justify_center().child(
@@ -288,7 +289,7 @@ pub(crate) fn render_skills_setup_page(
                         .gap_2()
                         .child(Label::new(message).color(Color::Muted))
                         .child(
-                            Button::new("open-skill-creator-empty", "Create a Skill")
+                            Button::new("open-skill-creator-empty", t!("settings_ui.skills_setup.create_a_skill"))
                                 .tab_index(0_isize)
                                 .style(ButtonStyle::Outlined)
                                 .start_icon(
@@ -357,9 +358,12 @@ fn render_skill_row(
     let skill_name = skill.name.clone();
 
     let (skill_scope, shared_scope) = match &skill.source {
-        SkillSource::ProjectLocal { .. } => ("project", "used in this project"),
-        _ if remote_project_id.is_some() => ("global", "on the remote machine"),
-        _ => ("global", "on this machine"),
+        SkillSource::ProjectLocal { .. } => (
+            "project",
+            t!("settings_ui.skills_setup.shared_scope_project").to_string(),
+        ),
+        _ if remote_project_id.is_some() => ("global", "on the remote machine".to_string()),
+        _ => ("global", "on this machine".to_string()),
     };
 
     let delete_skill = skill.clone();
@@ -390,7 +394,7 @@ fn render_skill_row(
             .shape(ui::IconButtonShape::Square)
             .icon_size(IconSize::Small)
             .icon_color(share_icon_color)
-            .tooltip(Tooltip::text("Copy Share Link"))
+            .tooltip(Tooltip::text(t!("settings_ui.skills_setup.copy_share_link")))
             .visible_on_hover(&group)
             .on_click(cx.listener(move |settings_window, _event, _window, cx| {
                 copy_skill_share_link(&share_skill, remote_project.clone(), settings_window, cx)
@@ -436,7 +440,7 @@ fn render_skill_row(
                     )
                     .tab_index(0_isize)
                     .icon_size(IconSize::Small)
-                    .tooltip(Tooltip::text("Delete Skill"))
+                    .tooltip(Tooltip::text(t!("settings_ui.skills_setup.delete_skill")))
                     .on_click(cx.listener(
                         move |settings_window, _event, window, cx| {
                             let directory_path = directory_path.clone();
@@ -459,7 +463,11 @@ fn render_skill_row(
                                 PromptLevel::Info,
                                 &prompt_message,
                                 Some(&prompt_detail),
-                                &["Delete", "Cancel"],
+                                &[
+                                    t!("settings_ui.skills_setup.delete").as_ref(),
+                                    t!("settings_ui.external_agents_page.cancel")
+                                        .as_ref(),
+                                ],
                                 cx,
                             );
 

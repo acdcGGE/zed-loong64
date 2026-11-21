@@ -4,6 +4,7 @@ use agent_skills::{
     project_skills_relative_path, slugify_skill_name, validate_description, validate_name,
     write_skill_to_disk,
 };
+use zed_i18n::t;
 use anyhow::{Context as _, Result, anyhow};
 use editor::{CurrentLineHighlight, Editor, EditorElement, EditorEvent, EditorStyle};
 use fs::Fs;
@@ -159,7 +160,7 @@ impl SkillCreatorPage {
 
         let name_editor = cx.new(|cx| {
             InputField::new(window, cx, "my-new-skill")
-                .label("Name")
+                .label(t!("settings_ui.skill_creator.name_label"))
                 .tab_index(NAME_FIELD_TAB_INDEX)
                 .tab_stop(true)
         });
@@ -170,9 +171,9 @@ impl SkillCreatorPage {
             InputField::new(
                 window,
                 cx,
-                "e.g., Fill the PR description following this template.",
+                t!("settings_ui.skill_creator.description_placeholder").as_ref(),
             )
-            .label("Description")
+            .label(t!("settings_ui.skill_creator.description_label"))
             .tab_index(DESCRIPTION_FIELD_TAB_INDEX)
             .tab_stop(true)
         });
@@ -184,7 +185,7 @@ impl SkillCreatorPage {
                 buffer
             });
             let mut editor = Editor::for_buffer(buffer, None, window, cx);
-            editor.set_placeholder_text("Add skill content…", window, cx);
+            editor.set_placeholder_text(t!("settings_ui.skill_creator.body_placeholder").as_ref(), window, cx);
             editor.set_soft_wrap_mode(SoftWrap::EditorWidth, cx);
             editor.set_show_gutter(false, cx);
             editor.set_show_wrap_guides(false, cx);
@@ -702,7 +703,7 @@ impl SkillCreatorPage {
             .child(
                 h_flex()
                     .gap_1()
-                    .child(Label::new("Import from URL"))
+                    .child(Label::new(t!("settings_ui.skill_creator.import_from_url")))
                     .child(Label::new("(optional)").color(Color::Muted)),
             )
             .child(self.url_editor.clone())
@@ -715,7 +716,7 @@ impl SkillCreatorPage {
                 .color(Color::Muted)
                 .into_any_element(),
                 UrlImportStatus::Fetching => {
-                    LoadingLabel::new("Fetching and parsing…").into_any_element()
+                    LoadingLabel::new(t!("settings_ui.skill_creator.fetching_and_parsing")).into_any_element()
                 }
                 UrlImportStatus::Error(error) => h_flex()
                     .gap_1()
@@ -742,7 +743,7 @@ impl SkillCreatorPage {
             .child(
                 v_flex()
                     .gap_2()
-                    .child(Label::new("Front-matter"))
+                    .child(Label::new(t!("settings_ui.skill_creator.front_matter")))
                     .child(self.name_editor.clone())
                     .child(self.description_editor.clone()),
             )
@@ -753,7 +754,7 @@ impl SkillCreatorPage {
                     .flex_grow_1()
                     .flex_shrink_0()
                     .gap_2()
-                    .child(Label::new("Skill Content"))
+                    .child(Label::new(t!("settings_ui.skill_creator.skill_content")))
                     .child(self.render_body_field(window, cx))
                     .when_some(self.body_error, |this, error| {
                         this.child(Label::new(error).size(LabelSize::Small).color(Color::Error))
@@ -766,9 +767,9 @@ impl SkillCreatorPage {
 
         SwitchField::new(
             "disable-model-invocation",
-            Some("Disable model invocation"),
+            Some(t!("settings_ui.skill_creator.disable_model_invocation")),
             Some(
-                "Hide this skill from the model's catalog. It can still be invoked via slash command."
+                t!("settings_ui.skill_creator.disable_model_invocation_description")
                     .into(),
             ),
             toggle_state,

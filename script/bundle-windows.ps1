@@ -40,8 +40,17 @@ function Get-VSArch {
     }
 }
 
+# 动态定位 Visual Studio 安装路径（兼容 BuildTools / Enterprise / Professional / Community，
+# 官方脚本硬编码 BuildTools 路径，在 GitHub 公共 runner 上不存在）
+$vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+$vsInstallPath = & $vswhere -latest -products * -property installationPath
+if (-not $vsInstallPath) {
+    throw "未找到 Visual Studio 安装"
+}
+$launchVsDevShell = Join-Path $vsInstallPath "Common7\Tools\Launch-VsDevShell.ps1"
+
 Push-Location
-& "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\Launch-VsDevShell.ps1" -Arch (Get-VSArch -Arch $Architecture) -HostArch (Get-VSArch -Arch $OSArchitecture)
+& $launchVsDevShell -Arch (Get-VSArch -Arch $Architecture) -HostArch (Get-VSArch -Arch $OSArchitecture)
 Pop-Location
 
 $target = "$Architecture-pc-windows-msvc"
@@ -209,9 +218,15 @@ function MakeAppx {
         }
     }
     Copy-Item -Path "$manifestFile" -Destination "$innoDir\make_appx\AppxManifest.xml"
-    # Add makeAppx.exe to Path
-    $sdk = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0\x64"
-    $env:Path += ';' + $sdk
+    # 动态定位 makeAppx.exe（官方脚本硬编码 SDK 版本 10.0.26100.0，
+    # GitHub 公共 runner 的 Windows SDK 版本不同，需取已安装的最新版本）
+    $makeAppxExe = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\makeAppx.exe" -ErrorAction SilentlyContinue |
+        Sort-Object { [version]($_.Directory.Parent.Name) } -Descending |
+        Select-Object -First 1 -ExpandProperty FullName
+    if (-not $makeAppxExe) {
+        throw "未找到 Windows SDK 中的 makeAppx.exe"
+    }
+    $env:Path += ';' + (Split-Path $makeAppxExe)
     makeAppx.exe pack /d "$innoDir\make_appx" /p "$innoDir\zed_explorer_command_injector.appx" /nv
 }
 
@@ -224,12 +239,47 @@ function SignZedAndItsFriends {
     & "$innoDir\sign.ps1" $files
 }
 
+# 带重试的下载：codeload.github.com / releases 在国内或 CI 上常瞬时断流，
+# 裸 Invoke-WebRequest 一次失败即中断整个打包，故统一加重试 + 退避。
+function Invoke-DownloadWithRetry {
+    param(
+        [Parameter(Mandatory)][string]$Url,
+        [Parameter(Mandatory)][string]$OutFile,
+        [int]$Attempts = 5
+    )
+    # 防御性启用 TLS1.2，避免部分环境默认协议过旧导致握手失败
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+    for ($i = 1; $i -le $Attempts; $i++) {
+        try {
+            Write-Output "下载 $Url （第 $i/$Attempts 次）"
+            Invoke-WebRequest -Uri $Url -OutFile $OutFile -UseBasicParsing
+            if ((Test-Path $OutFile) -and (Get-Item $OutFile).Length -gt 0) {
+                return
+            }
+            throw "下载结果为空文件"
+        }
+        catch {
+            Write-Output "下载失败（第 $i 次）：$_"
+            if ($i -eq $Attempts) { throw }
+            Start-Sleep -Seconds (2 * $i)
+        }
+    }
+}
+
 function DownloadAMDGpuServices {
     # If you update the AGS SDK version, please also update the version in `crates/gpui/src/platform/windows/directx_renderer.rs`
     $url = "https://codeload.github.com/GPUOpen-LibrariesAndSDKs/AGS_SDK/zip/refs/tags/v6.3.0"
     $zipPath = ".\AGS_SDK_v6.3.0.zip"
-    # Download the AGS SDK zip file
-    Invoke-WebRequest -Uri $url -OutFile $zipPath
+    $extractDir = ".\AGS_SDK-6.3.0"
+    # 以关键 dll 存在作为解压完成标志：目录存在但文件不全（如解压中断、杀软误删）时重新解压
+    if (Test-Path "$extractDir\ags_lib\lib\amd_ags_x64.dll") {
+        Write-Output "AGS SDK 已存在于 $extractDir，跳过下载"
+        return
+    }
+    # zip 已存在且非空则复用，避免解压中断后重复下载
+    if (-not ((Test-Path $zipPath) -and (Get-Item $zipPath).Length -gt 0)) {
+        Invoke-DownloadWithRetry -Url $url -OutFile $zipPath
+    }
     # Extract the AGS SDK zip file
     Expand-Archive -Path $zipPath -DestinationPath "." -Force
 }
@@ -238,8 +288,17 @@ function DownloadConpty {
     # TODO: Switch back to the stable channel once Microsoft finally decides to publish v1.26
     $url = "https://github.com/microsoft/terminal/releases/download/v1.25.1912.0/Microsoft.Windows.Console.ConPTY.1.25.260710002-preview.nupkg"
     $zipPath = ".\Microsoft.Windows.Console.ConPTY.1.25.260710002-preview.nupkg"
-    Invoke-WebRequest -Uri $url -OutFile $zipPath
-    Expand-Archive -Path $zipPath -DestinationPath ".\conpty" -Force
+    $extractDir = ".\conpty"
+    # 以关键文件存在作为解压完成标志：目录存在但文件不全（如解压中断）时重新解压
+    if ((Test-Path "$extractDir\runtimes\win-x64\native\conpty.dll") -and (Test-Path "$extractDir\build\native\runtimes\arm64\OpenConsole.exe")) {
+        Write-Output "ConPTY 已存在于 $extractDir，跳过下载"
+        return
+    }
+    # nupkg 已存在且非空则复用，避免解压中断后重复下载
+    if (-not ((Test-Path $zipPath) -and (Get-Item $zipPath).Length -gt 0)) {
+        Invoke-DownloadWithRetry -Url $url -OutFile $zipPath
+    }
+    Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
 }
 
 function CollectFiles {

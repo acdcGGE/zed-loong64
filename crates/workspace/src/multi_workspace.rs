@@ -1,3 +1,4 @@
+use zed_i18n::t;
 use anyhow::{Context as _, Result};
 use fs::Fs;
 
@@ -74,9 +75,15 @@ pub fn sidebar_side_context_menu(
     right_click_menu(id).menu(move |window, cx| {
         let fs = <dyn fs::Fs>::global(cx);
         ContextMenu::build(window, cx, move |mut menu, _, _cx| {
-            let positions: [(SidebarDockPosition, &str); 2] = [
-                (SidebarDockPosition::Left, "Left"),
-                (SidebarDockPosition::Right, "Right"),
+            let positions: [(SidebarDockPosition, String); 2] = [
+                (
+                    SidebarDockPosition::Left,
+                    t!("workspace.dock.position_left").into_owned(),
+                ),
+                (
+                    SidebarDockPosition::Right,
+                    t!("workspace.dock.position_right").into_owned(),
+                ),
             ];
             for (position, label) in positions {
                 let fs = fs.clone();

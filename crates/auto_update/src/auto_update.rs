@@ -31,6 +31,7 @@ use std::{
 };
 use util::command::new_command;
 use workspace::Workspace;
+use zed_i18n::t;
 
 const SHOULD_SHOW_UPDATE_NOTIFICATION_KEY: &str = "auto-updater-should-show-updated-notification";
 
@@ -47,6 +48,9 @@ impl std::error::Error for MissingDependencyError {}
 const POLL_INTERVAL: Duration = Duration::from_secs(60 * 60);
 const NIGHTLY_POLL_INTERVAL: Duration = Duration::from_secs(15 * 60);
 const REMOTE_SERVER_CACHE_LIMIT: usize = 5;
+
+/// 检查更新所用的 GitHub 仓库（MindFlowLab 汉化版），从其 GitHub Releases 拉取安装包
+const GITHUB_RELEASE_REPO: &str = "MindFlowLab/zed-ZH_CN";
 
 #[cfg(target_os = "linux")]
 fn linux_rsync_install_hint() -> &'static str {
@@ -108,16 +112,6 @@ actions!(
         ViewReleaseNotes,
     ]
 );
-
-#[derive(Serialize, Debug)]
-pub struct AssetQuery<'a> {
-    asset: &'a str,
-    os: &'a str,
-    arch: &'a str,
-    metrics_id: Option<&'a str>,
-    system_id: Option<&'a str>,
-    is_staff: Option<bool>,
-}
 
 #[derive(Clone, Debug)]
 pub enum AutoUpdateStatus {
@@ -314,9 +308,9 @@ pub fn check(_: &Check, window: &mut Window, cx: &mut App) {
     {
         drop(window.prompt(
             gpui::PromptLevel::Info,
-            "Zed was installed via a package manager.",
+            &t!("auto_update.installed_via_package_manager"),
             Some(&message),
-            &["OK"],
+            &[gpui::PromptButton::new(t!("auto_update.ok"))],
             cx,
         ));
         return;
@@ -334,9 +328,9 @@ pub fn check(_: &Check, window: &mut Window, cx: &mut App) {
     } else {
         drop(window.prompt(
             gpui::PromptLevel::Info,
-            "Could not check for updates",
-            Some("Auto-updates disabled for non-bundled app."),
-            &["OK"],
+            &t!("auto_update.could_not_check_for_updates"),
+            Some(&t!("auto_update.non_bundled_detail")),
+            &[gpui::PromptButton::new(t!("auto_update.ok"))],
             cx,
         ));
     }
@@ -676,64 +670,47 @@ impl AutoUpdater {
 
     async fn get_release_asset(
         this: &Entity<Self>,
-        release_channel: ReleaseChannel,
+        _release_channel: ReleaseChannel,
         version: Option<Version>,
         asset: &str,
         os: &str,
         arch: &str,
         cx: &mut AsyncApp,
     ) -> Result<ReleaseAsset> {
-        let client = this.read_with(cx, |this, _| this.client.clone());
+        let http_client = this.read_with(cx, |this, _| this.client.http_client());
 
-        let (system_id, metrics_id, is_staff) = if client.telemetry().metrics_enabled() {
-            (
-                client.telemetry().system_id(),
-                client.telemetry().metrics_id(),
-                client.telemetry().is_staff(),
+        // 从 GitHub Releases 拉取：指定版本时按 tag 查询，否则取最新 release
+        let release = match version {
+            Some(mut version) => {
+                version.pre = semver::Prerelease::EMPTY;
+                version.build = semver::BuildMetadata::EMPTY;
+                let tag = format!("v{version}");
+                github_releases::get_release_by_tag_name(GITHUB_RELEASE_REPO, &tag, http_client)
+                    .await
+                    .with_context(|| format!("error fetching release {tag}"))?
+            }
+            None => github_releases::latest_github_release(
+                GITHUB_RELEASE_REPO,
+                true,
+                false,
+                http_client,
             )
-        } else {
-            (None, None, None)
+            .await
+            .context("error fetching latest release")?,
         };
 
-        let version = if let Some(mut version) = version {
-            version.pre = semver::Prerelease::EMPTY;
-            version.build = semver::BuildMetadata::EMPTY;
-            version.to_string()
-        } else {
-            "latest".to_string()
-        };
-        let http_client = client.http_client();
+        // tag 形如 "v1.14.0"，去掉前导 v 作为语义化版本号
+        let release_version = release
+            .tag_name
+            .strip_prefix('v')
+            .unwrap_or(&release.tag_name)
+            .to_string();
 
-        let path = format!("/releases/{}/{}/asset", release_channel.dev_name(), version,);
-        let url = http_client.build_zed_cloud_url_with_query(
-            &path,
-            AssetQuery {
-                os,
-                arch,
-                asset,
-                metrics_id: metrics_id.as_deref(),
-                system_id: system_id.as_deref(),
-                is_staff,
-            },
-        )?;
+        let url = select_github_asset(&release.assets, asset, os, arch)?;
 
-        let mut response = http_client
-            .get(url.as_str(), Default::default(), true)
-            .await?;
-        let mut body = Vec::new();
-        response.body_mut().read_to_end(&mut body).await?;
-
-        anyhow::ensure!(
-            response.status().is_success(),
-            "failed to fetch release: {:?}",
-            String::from_utf8_lossy(&body),
-        );
-
-        serde_json::from_slice(body.as_slice()).with_context(|| {
-            format!(
-                "error deserializing release {:?}",
-                String::from_utf8_lossy(&body),
-            )
+        Ok(ReleaseAsset {
+            version: release_version,
+            url,
         })
     }
 
@@ -1071,6 +1048,47 @@ async fn cleanup_remote_server_cache(
     }
 
     Ok(())
+}
+
+/// 根据目标平台从 GitHub Release 资产列表中挑选匹配的安装包下载地址。
+///
+/// 各平台资产命名约定（MindFlowLab/zed-ZH_CN）：
+/// - 主程序 linux:   `zed-linux-{arch}.tar.gz`
+/// - 主程序 windows: `Zed-{arch}.exe`
+/// - 主程序 macos:   `Zed-{arch}.dmg`
+/// - 远程服务器:     `zed-remote-server-{os}-{arch}.gz` / `.zip`
+fn select_github_asset(
+    assets: &[github_releases::GithubReleaseAsset],
+    asset: &str,
+    os: &str,
+    arch: &str,
+) -> Result<String> {
+    let candidates: Vec<String> = match asset {
+        "zed" => match os {
+            "windows" => vec![format!("Zed-{arch}.exe"), format!("zed-{os}-{arch}.exe")],
+            "macos" => vec![
+                format!("Zed-{arch}.dmg"),
+                format!("zed-{os}-{arch}.dmg"),
+                format!("zed-{os}-{arch}.zip"),
+            ],
+            _ => vec![format!("zed-{os}-{arch}.tar.gz")],
+        },
+        other => vec![
+            format!("{other}-{os}-{arch}.gz"),
+            format!("{other}-{os}-{arch}.zip"),
+        ],
+    };
+
+    for name in &candidates {
+        if let Some(matched) = assets.iter().find(|a| &a.name == name) {
+            return Ok(matched.browser_download_url.clone());
+        }
+    }
+
+    anyhow::bail!(
+        "no matching GitHub release asset for asset={asset} os={os} arch={arch}; available: {:?}",
+        assets.iter().map(|a| &a.name).collect::<Vec<_>>()
+    )
 }
 
 async fn download_release(
@@ -1419,16 +1437,18 @@ mod tests {
                 let release_available = release_available.load(atomic::Ordering::Relaxed);
                 let dmg_rx = dmg_rx.clone();
                 async move {
-                if req.uri().path() == "/releases/stable/latest/asset" {
-                    if release_available {
-                        return Ok(Response::builder().status(200).body(
-                            r#"{"version":"0.100.1","url":"https://test.example/new-download"}"#.into()
-                        ).unwrap());
-                    } else {
-                        return Ok(Response::builder().status(200).body(
-                            r#"{"version":"0.100.0","url":"https://test.example/old-download"}"#.into()
-                        ).unwrap());
-                    }
+                if req.uri().path() == "/repos/MindFlowLab/zed-ZH_CN/releases" {
+                    // 根据当前平台构造与 select_github_asset 匹配的主程序资产名
+                    let asset_name = match OS {
+                        "windows" => format!("Zed-{ARCH}.exe"),
+                        "macos" => format!("zed-macos-{ARCH}.zip"),
+                        _ => format!("zed-{OS}-{ARCH}.tar.gz"),
+                    };
+                    let version = if release_available { "0.100.1" } else { "0.100.0" };
+                    let body = format!(
+                        r#"[{{"tag_name":"v{version}","prerelease":false,"assets":[{{"name":"{asset_name}","browser_download_url":"https://test.example/new-download"}}],"tarball_url":"","zipball_url":""}}]"#
+                    );
+                    return Ok(Response::builder().status(200).body(body.into()).unwrap());
                 } else if req.uri().path() == "/new-download" {
                     return Ok(Response::builder().status(200).body({
                         let dmg_rx = dmg_rx.lock().take().unwrap();
@@ -1508,6 +1528,58 @@ mod tests {
         let path = path.unwrap();
         assert_eq!(path, tmp_dir.path().join("zed"));
         assert_eq!(std::fs::read_to_string(path).unwrap(), "<fake-zed-update>");
+    }
+
+    #[test]
+    fn test_select_github_asset() {
+        fn asset(name: &str) -> github_releases::GithubReleaseAsset {
+            github_releases::GithubReleaseAsset {
+                name: name.to_string(),
+                browser_download_url: format!("https://example.com/{name}"),
+                digest: None,
+            }
+        }
+
+        // 与 MindFlowLab/zed-ZH_CN 实际 release 资产名保持一致
+        let assets = vec![
+            asset("zed-linux-x86_64.tar.gz"),
+            asset("Zed-x86_64.exe"),
+            asset("Zed-aarch64.dmg"),
+            asset("zed-remote-server-linux-x86_64.gz"),
+            asset("zed-remote-server-windows-x86_64.zip"),
+            asset("zed-remote-server-macos-aarch64.gz"),
+        ];
+
+        // 主程序
+        assert_eq!(
+            select_github_asset(&assets, "zed", "linux", "x86_64").unwrap(),
+            "https://example.com/zed-linux-x86_64.tar.gz"
+        );
+        assert_eq!(
+            select_github_asset(&assets, "zed", "windows", "x86_64").unwrap(),
+            "https://example.com/Zed-x86_64.exe"
+        );
+        assert_eq!(
+            select_github_asset(&assets, "zed", "macos", "aarch64").unwrap(),
+            "https://example.com/Zed-aarch64.dmg"
+        );
+
+        // 远程服务器（remote server）
+        assert_eq!(
+            select_github_asset(&assets, "zed-remote-server", "linux", "x86_64").unwrap(),
+            "https://example.com/zed-remote-server-linux-x86_64.gz"
+        );
+        assert_eq!(
+            select_github_asset(&assets, "zed-remote-server", "windows", "x86_64").unwrap(),
+            "https://example.com/zed-remote-server-windows-x86_64.zip"
+        );
+        assert_eq!(
+            select_github_asset(&assets, "zed-remote-server", "macos", "aarch64").unwrap(),
+            "https://example.com/zed-remote-server-macos-aarch64.gz"
+        );
+
+        // 缺少对应平台资产时应报错（未提供 macos x86_64 主程序）
+        assert!(select_github_asset(&assets, "zed", "macos", "x86_64").is_err());
     }
 
     #[gpui::test]

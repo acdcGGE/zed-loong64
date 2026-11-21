@@ -1,3 +1,4 @@
+use zed_i18n::t;
 use super::*;
 use acp_thread::{AcpThread, PermissionOptions, StubAgentConnection};
 use agent::ThreadStore;

@@ -4,6 +4,7 @@ use std::{
     rc::Rc,
     time::{Duration, Instant},
 };
+use zed_i18n::t;
 
 use command_palette_hooks::CommandPaletteFilter;
 use gpui::{
@@ -549,7 +550,11 @@ impl Render for ProfilerWindow {
                             .child(
                                 Button::new(
                                     "switch-mode",
-                                    if self.paused { "Resume" } else { "Pause" },
+                                    if self.paused {
+                                        t!("miniprofiler_ui.resume")
+                                    } else {
+                                        t!("miniprofiler_ui.pause")
+                                    },
                                 )
                                 .style(ButtonStyle::Filled)
                                 .on_click(cx.listener(
@@ -565,7 +570,7 @@ impl Render for ProfilerWindow {
                                 )),
                             )
                             .child(
-                                Button::new("export-data", "Save")
+                                Button::new("export-data", t!("miniprofiler_ui.save"))
                                     .style(ButtonStyle::Filled)
                                     .on_click(cx.listener(|this, _, _window, cx| {
                                         let Some(workspace) = this.workspace.as_ref() else {
@@ -622,7 +627,7 @@ impl Render for ProfilerWindow {
                     )
                     .child(
                         Checkbox::new("include-self", self.include_self_timings)
-                            .label("Include profiler timings")
+                            .label(t!("miniprofiler_ui.include_profiler_timings"))
                             .on_click(cx.listener(|this, checked, _window, cx| {
                                 this.include_self_timings = *checked;
                                 cx.notify();

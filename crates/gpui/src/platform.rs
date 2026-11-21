@@ -3053,6 +3053,12 @@ impl From<&str> for PromptButton {
     }
 }
 
+impl From<std::borrow::Cow<'_, str>> for PromptButton {
+    fn from(value: std::borrow::Cow<'_, str>) -> Self {
+        Self::from(value.as_ref())
+    }
+}
+
 /// The style of the cursor (pointer)
 #[derive(
     Copy, Clone, Default, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, EnumIter,

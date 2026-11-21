@@ -76,6 +76,7 @@ use workspace::{
     CollaboratorId, MultiWorkspace, NewTerminal, PathList, Workspace, path_link::sanitize_path_text,
 };
 use zed_actions::agent::{Chat, ToggleModelSelector};
+use zed_i18n::t;
 
 use super::config_options::ConfigOptionsView;
 use super::entry_view_state::EntryViewState;
@@ -1097,7 +1098,10 @@ impl ConversationView {
         let code_span_resolver = AgentCodeSpanResolver::new(&project.downgrade(), cx);
         let mut subscriptions = vec![
             cx.observe_global_in::<SettingsStore>(window, Self::agent_ui_font_size_changed),
-            cx.observe_global_in::<SettingsStore>(window, Self::invalidate_mermaid_caches),
+            cx.observe_global_in::<SettingsStore>(
+                window,
+                Self::invalidate_embedded_diagrams_caches,
+            ),
             cx.observe_global_in::<AgentUiFontSize>(window, Self::agent_ui_font_size_changed),
             cx.observe_global_in::<AgentBufferFontSize>(window, Self::agent_ui_font_size_changed),
             cx.subscribe_in(
@@ -1350,7 +1354,7 @@ impl ConversationView {
         {
             return ServerState::LoadError {
                 error: LoadError::Other(
-                    "External agents are not yet supported in shared projects.".into(),
+                    t!("agent_ui.conversation_view.external_agents_not_supported").into(),
                 ),
             };
         }
@@ -1458,7 +1462,7 @@ impl ConversationView {
                         )
                     } else {
                         Task::ready(Err(anyhow!(LoadError::Other(
-                            "Loading or resuming sessions is not supported by this agent.".into()
+                            t!("agent_ui.conversation_view.loading_sessions_not_supported").into()
                         ))))
                     }
                 })
@@ -2012,16 +2016,28 @@ impl ConversationView {
             ServerState::Loading { .. } => self
                 .loading_status
                 .clone()
-                .unwrap_or_else(|| "Loading…".into()),
+                .unwrap_or_else(|| t!("agent_ui.conversation_view.loading").into()),
             ServerState::LoadError { error, .. } => match error {
-                LoadError::Unsupported { .. } => {
-                    format!("Upgrade {}", self.agent.agent_id()).into()
-                }
-                LoadError::FailedToInstall(_) => {
-                    format!("Failed to Install {}", self.agent.agent_id()).into()
-                }
-                LoadError::Exited { .. } => format!("{} Exited", self.agent.agent_id()).into(),
-                LoadError::Other(_) => format!("Error Loading {}", self.agent.agent_id()).into(),
+                LoadError::Unsupported { .. } => t!(
+                    "agent_ui.conversation_view.upgrade_agent",
+                    agent = self.agent.agent_id()
+                )
+                .into(),
+                LoadError::FailedToInstall(_) => t!(
+                    "agent_ui.conversation_view.failed_to_install_agent",
+                    agent = self.agent.agent_id()
+                )
+                .into(),
+                LoadError::Exited { .. } => t!(
+                    "agent_ui.conversation_view.agent_exited",
+                    agent = self.agent.agent_id()
+                )
+                .into(),
+                LoadError::Other(_) => t!(
+                    "agent_ui.conversation_view.error_loading_agent",
+                    agent = self.agent.agent_id()
+                )
+                .into(),
             },
         }
     }
@@ -2172,11 +2188,21 @@ impl ConversationView {
             // redraws them.
             AcpThreadEvent::SubagentAssociationUpdated => {}
             AcpThreadEvent::ToolAuthorizationRequested(_) => {
-                self.notify_with_sound("Waiting for tool confirmation", IconName::Info, window, cx);
+                self.notify_with_sound(
+                    t!("agent_ui.conversation_view.waiting_for_tool_confirmation"),
+                    IconName::Info,
+                    window,
+                    cx,
+                );
             }
             AcpThreadEvent::ToolAuthorizationReceived(_) => {}
             AcpThreadEvent::ElicitationRequested(_) => {
-                self.notify_with_sound("Waiting for input", IconName::Info, window, cx);
+                self.notify_with_sound(
+                    t!("agent_ui.conversation_view.waiting_for_input"),
+                    IconName::Info,
+                    window,
+                    cx,
+                );
             }
             AcpThreadEvent::ElicitationResponded(_) => {}
             AcpThreadEvent::Retry(retry) => {
@@ -2311,9 +2337,9 @@ impl ConversationView {
                     let used_tools = thread.read(cx).used_tools_since_last_user_message();
                     self.notify_with_sound(
                         if used_tools {
-                            "Finished running tools"
+                            t!("agent_ui.conversation_view.finished_running_tools")
                         } else {
-                            "New message"
+                            t!("agent_ui.conversation_view.new_message")
                         },
                         IconName::ZedAssistant,
                         window,
@@ -2352,7 +2378,7 @@ impl ConversationView {
                 }
                 if !is_subagent {
                     self.notify_with_sound(
-                        "Agent stopped due to an error",
+                        t!("agent_ui.conversation_view.agent_stopped_error"),
                         IconName::Warning,
                         window,
                         cx,
@@ -2994,7 +3020,10 @@ impl ConversationView {
 
         Callout::new()
             .icon(IconName::Info)
-            .title(format!("Authenticate to {}", agent_display_name))
+            .title(t!(
+                "agent_ui.conversation_view.authenticate_to",
+                agent = agent_display_name
+            ))
             .when(auth_methods.len() == 1, |this| {
                 this.actions_slot(auth_buttons())
             })
@@ -3004,7 +3033,7 @@ impl ConversationView {
                     .map(|this| {
                         if show_fallback_description {
                             this.child(
-                                Label::new("Choose one of the following authentication options:")
+                                Label::new(t!("agent_ui.conversation_view.choose_auth_option"))
                                     .size(LabelSize::Small)
                                     .color(Color::Muted),
                             )
@@ -3394,28 +3423,29 @@ impl ConversationView {
         div()
             .debug_selector(|| "copy-saved-agent-input".into())
             .child(
-                Button::new("copy-saved-agent-input", "Copy Saved Input")
-                    .tooltip(Tooltip::text(
-                        "Copy the original content and receipt evidence as JSON",
-                    ))
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        match ThreadRecovery::to_json(
-                            this.root_session_id.as_ref(),
-                            this.recovery.as_ref(),
-                            &this.saved_submissions,
-                        ) {
-                            Ok(saved) => {
-                                cx.write_to_clipboard(ClipboardItem::new_string(saved));
-                            }
-                            Err(error) => this.handle_load_error(
-                                LoadError::Other(
-                                    format!("Failed to copy saved input: {error}").into(),
-                                ),
-                                window,
-                                cx,
-                            ),
+                Button::new(
+                    "copy-saved-agent-input",
+                    t!("agent_ui.conversation_view.copy_saved_input"),
+                )
+                .tooltip(Tooltip::text(t!(
+                    "agent_ui.conversation_view.copy_saved_input_tooltip"
+                )))
+                .on_click(cx.listener(|this, _, window, cx| {
+                    match ThreadRecovery::to_json(
+                        this.root_session_id.as_ref(),
+                        this.recovery.as_ref(),
+                        &this.saved_submissions,
+                    ) {
+                        Ok(saved) => {
+                            cx.write_to_clipboard(ClipboardItem::new_string(saved));
                         }
-                    })),
+                        Err(error) => this.handle_load_error(
+                            LoadError::Other(format!("Failed to copy saved input: {error}").into()),
+                            window,
+                            cx,
+                        ),
+                    }
+                })),
             )
     }
 
@@ -3425,7 +3455,7 @@ impl ConversationView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let (title, message) = match e {
+        let (title, message): (SharedString, SharedString) = match e {
             LoadError::Unsupported {
                 command: path,
                 current_version,
@@ -3433,16 +3463,28 @@ impl ConversationView {
             } => {
                 return self.render_unsupported(path, current_version, minimum_version, window, cx);
             }
-            LoadError::FailedToInstall(msg) => ("Failed to Install", msg.to_string()),
+            LoadError::FailedToInstall(msg) => (
+                t!("agent_ui.conversation_view.failed_to_install").into(),
+                msg.into(),
+            ),
             LoadError::Exited { status, stderr } => {
-                let mut message = format!("Server exited with status {status}");
+                let mut message = t!(
+                    "agent_ui.conversation_view.server_exited_with_status",
+                    status = status
+                );
                 if let Some(stderr) = stderr {
                     message.push_str("\n");
                     message.push_str(stderr);
                 };
-                ("Failed to Launch", message)
+                (
+                    t!("agent_ui.conversation_view.failed_to_launch").into(),
+                    message.into(),
+                )
             }
-            LoadError::Other(msg) => ("Failed to Launch", msg.to_string()),
+            LoadError::Other(msg) => (
+                t!("agent_ui.conversation_view.failed_to_launch").into(),
+                msg.into(),
+            ),
         };
 
         let action_slot = h_flex()
@@ -3860,7 +3902,11 @@ impl ConversationView {
         }
     }
 
-    fn invalidate_mermaid_caches(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    fn invalidate_embedded_diagrams_caches(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let current_theme_id = cx.theme().id.clone();
         if self.last_theme_id.as_ref() == Some(&current_theme_id) {
             return;
@@ -3877,7 +3923,7 @@ impl ConversationView {
                 .collect();
             for thread in threads {
                 thread.update(cx, |thread, cx| {
-                    thread.invalidate_mermaid_caches(cx);
+                    thread.invalidate_embedded_diagrams_caches(cx);
                 });
             }
         }
@@ -3933,7 +3979,9 @@ impl ConversationView {
                 .and_then(|active| active.read(cx).model_selector.clone())
                 .and_then(|selector| selector.read(cx).active_model(cx))
                 .map(|model| model.name.clone())
-                .unwrap_or_else(|| SharedString::from("The model"))
+                .unwrap_or_else(|| {
+                    SharedString::from(t!("agent_ui.conversation_view.the_model_name"))
+                })
         } else {
             // ACP agent - use the agent name (e.g., "Claude Agent", "Gemini CLI")
             self.agent.agent_id().0
@@ -3943,7 +3991,8 @@ impl ConversationView {
     fn create_copy_button(&self, message: impl Into<String>) -> impl IntoElement {
         let message = message.into();
 
-        CopyButton::new("copy-error-message", message).tooltip_label("Copy Error Message")
+        CopyButton::new("copy-error-message", message)
+            .tooltip_label(t!("agent_ui.conversation_view.copy_error_message"))
     }
 
     pub(crate) fn reauthenticate(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -4041,17 +4090,17 @@ fn native_available_skills(
 
 fn placeholder_text(agent_name: &str, has_commands: bool) -> String {
     if agent_name == agent::ZED_AGENT_ID.as_ref() {
-        format!(
-            "Message the {}, @ to include context, / for commands",
-            agent_name
+        t!(
+            "agent_ui.conversation_view.placeholder_zed",
+            agent = agent_name
         )
     } else if has_commands {
-        format!(
-            "Message {} — @ to include context, / for commands",
-            agent_name
+        t!(
+            "agent_ui.conversation_view.placeholder_with_commands",
+            agent = agent_name
         )
     } else {
-        format!("Message {} — @ to include context", agent_name)
+        t!("agent_ui.conversation_view.placeholder", agent = agent_name)
     }
 }
 
@@ -4110,7 +4159,7 @@ impl Render for ConversationView {
                 let label_text = self
                     .loading_status
                     .clone()
-                    .unwrap_or_else(|| "Loading…".into());
+                    .unwrap_or_else(|| t!("agent_ui.conversation_view.loading").into());
                 v_flex()
                     .flex_1()
                     .size_full()
@@ -4184,8 +4233,13 @@ impl Render for ConversationView {
                                     div()
                                         .debug_selector(|| "discard-saved-agent-submissions".into())
                                         .child(
-                                            Button::new("discard-saved-agent-submissions", "Discard Saved Submissions")
-                                                .tooltip(Tooltip::text("Discard local copies only; does not cancel agent work"))
+                                            Button::new(
+                                                "discard-saved-agent-submissions",
+                                                t!("agent_ui.conversation_view.discard_saved_submissions")
+                                            )
+                                                .tooltip(Tooltip::text(t!(
+                                                    "agent_ui.conversation_view.discard_saved_submissions_tooltip"
+                                                )))
                                                 .on_click(cx.listener(|this, _, _, cx| {
                                                     this.saved_submissions.clear();
                                                     if let Some(recovery) = &mut this.recovery {
@@ -4404,15 +4458,15 @@ impl AgentCodeSpanResolver {
 fn plan_summary_label(stats: &acp_thread::PlanStats<'_>, entry_count: usize) -> String {
     if stats.pending == 0 {
         if stats.cancelled == 0 {
-            "All Done"
+            t!("agent_ui.thread_view.all_done")
         } else if stats.completed == 0 {
-            "Cancelled"
+            t!("agent_ui.thread_view.cancelled")
         } else {
-            "Finished"
+            t!("agent_ui.thread_view.finished")
         }
-        .to_owned()
+        .to_string()
     } else if stats.completed == 0 {
-        format!("{entry_count} Tasks")
+        t!("agent_ui.thread_view.task_count", count = entry_count)
     } else {
         format!("{}/{entry_count}", stats.completed)
     }

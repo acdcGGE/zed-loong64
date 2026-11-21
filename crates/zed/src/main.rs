@@ -15,6 +15,7 @@ const _: () = assert!(
      Forks: update APP_NAME in crates/paths/src/paths.rs when renaming the binary.",
 );
 
+use zed_i18n::t;
 use agent_ui::AgentPanel;
 use anyhow::{Context as _, Result};
 use clap::Parser;
@@ -102,7 +103,7 @@ fn build_application() -> Application {
 }
 
 fn files_not_created_on_launch(errors: HashMap<io::ErrorKind, Vec<&Path>>) {
-    let message = "Zed failed to launch";
+    let message = t!("zed.startup.launch_failed");
     let error_details = errors
         .into_iter()
         .flat_map(|(kind, paths)| {
@@ -139,9 +140,9 @@ fn files_not_created_on_launch(errors: HashMap<io::ErrorKind, Vec<&Path>>) {
                     .update(cx, |_, window, cx| {
                         let response = window.prompt(
                             gpui::PromptLevel::Critical,
-                            message,
+                            &message,
                             Some(&error_details),
-                            &["Exit"],
+                            &[t!("zed.common.exit")],
                             cx,
                         );
 
@@ -184,7 +185,7 @@ fn fail_to_open_window(e: anyhow::Error, _cx: &mut App) {
             proxy
                 .add_notification(
                     notification_id,
-                    Notification::new("Zed failed to launch")
+                    Notification::new(t!("zed.startup.launch_failed").as_ref())
                         .body(Some(
                             format!(
                                 "{e:?}. See https://zed.dev/docs/linux for troubleshooting steps."
@@ -208,6 +209,10 @@ static STARTUP_TIME: OnceLock<Instant> = OnceLock::new();
 
 fn main() {
     STARTUP_TIME.get_or_init(|| Instant::now());
+
+    // 初始化界面国际化(默认 zh-CN),必须在任何 UI 构建之前完成
+    // Initialize UI i18n (default zh-CN) before any UI is built.
+    zed_i18n::init();
 
     // If this process was re-executed as a Linux sandbox helper, run that mode
     // without returning. Must run before argument parsing: the wrapped command's
@@ -1469,7 +1474,7 @@ async fn repository_paths(fs: &dyn Fs, paths: &[PathBuf]) -> Vec<PathBuf> {
 
 fn restore_errors_message(error_count: usize) -> String {
     if error_count == 1 {
-        "Failed to restore 1 workspace. Check logs for details.".to_string()
+        t!("zed.toast.restore_failed_one").to_string()
     } else {
         format!(
             "Failed to restore {} workspaces. Check logs for details.",

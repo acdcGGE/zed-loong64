@@ -1575,6 +1575,7 @@ struct FakeFsState {
     buffered_events: Vec<PathEvent>,
     metadata_call_count: usize,
     read_dir_call_count: usize,
+    read_call_count: usize,
     read_dir_hooks: BTreeMap<PathBuf, BoxFuture<'static, ()>>,
     path_write_counts: std::collections::HashMap<PathBuf, usize>,
     job_event_subscribers: Arc<Mutex<Vec<JobEventSender>>>,
@@ -2050,6 +2051,18 @@ impl fs_watcher::WatchBackend for FakeWatchBackend {
             .retain(|registered_path| *registered_path != path);
         Ok(())
     }
+
+    fn watched_paths(&self) -> notify::Result<Vec<(PathBuf, notify::RecursiveMode)>> {
+        Ok(self
+            .state
+            .lock()
+            .watches
+            .registered_paths
+            .iter()
+            .cloned()
+            .map(|path| (path, notify::RecursiveMode::Recursive))
+            .collect())
+    }
 }
 
 #[cfg(feature = "test-support")]
@@ -2079,6 +2092,7 @@ impl FakeFs {
             events_paused: false,
             read_dir_call_count: 0,
             metadata_call_count: 0,
+            read_call_count: 0,
             read_dir_hooks: Default::default(),
             path_write_counts: Default::default(),
             job_event_subscribers: Arc::new(Mutex::new(Vec::new())),
@@ -2248,6 +2262,7 @@ impl FakeFs {
         let path = normalize_path(path);
         self.simulate_random_delay().await;
         let mut state = self.state.lock();
+        state.read_call_count += 1;
         let entry = state.entry(&path)?;
         entry.file_content(&path).cloned()
     }
@@ -3008,6 +3023,11 @@ impl FakeFs {
     /// How many `metadata` calls have been issued.
     pub fn metadata_call_count(&self) -> usize {
         self.state.lock().metadata_call_count
+    }
+
+    /// How many file read operations (`load`, `load_bytes`, `open_sync`) have been issued.
+    pub fn read_call_count(&self) -> usize {
+        self.state.lock().read_call_count
     }
 
     /// How many write operations have been issued for a specific path.

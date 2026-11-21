@@ -240,6 +240,7 @@ impl VsCodeSettings {
             terminal: self.terminal_settings_content(),
             theme: Box::new(self.theme_settings_content()),
             title_bar: None,
+            ui_language: None,
             vim: None,
             vim_mode: None,
             workspace: self.workspace_settings_content(),
@@ -894,6 +895,7 @@ impl VsCodeSettings {
             auto_open: None,
             diagnostic_badges: None,
             git_status_indicator: None,
+            icon_size: None,
         };
 
         if let (Some(false), Some(false)) = (

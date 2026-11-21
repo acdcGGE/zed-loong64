@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
+use zed_i18n::t;
 
 use time::OffsetDateTime;
 
@@ -398,7 +399,7 @@ impl TelemetryLogView {
                     .when(signed_in, |this| {
                         this.child(
                             div()
-                                .child(ui::Chip::new("signed in"))
+                                .child(ui::Chip::new(t!("zed.telemetry_log.signed_in")))
                                 .visible_on_hover("telemetry-entry"),
                         )
                     }),
@@ -482,7 +483,7 @@ impl Item for TelemetryLogView {
     type Event = TelemetryLogEvent;
 
     fn tab_content_text(&self, _detail: usize, _cx: &App) -> SharedString {
-        "Telemetry Log".into()
+        t!("zed.telemetry_log.title").into()
     }
 
     fn tab_icon(&self, _window: &Window, _cx: &App) -> Option<Icon> {
@@ -508,9 +509,9 @@ impl Render for TelemetryLogView {
                     .justify_center()
                     .items_center()
                     .child(if self.events.is_empty() {
-                        "No telemetry events recorded yet"
+                        t!("zed.telemetry_log.no_events")
                     } else {
-                        "No events match the current filter"
+                        t!("zed.telemetry_log.no_filter_match")
                     })
                     .into_any()
             } else {
@@ -537,7 +538,7 @@ impl TelemetryLogToolbarItemView {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let search_editor = cx.new(|cx| {
             let mut editor = editor::Editor::single_line(window, cx);
-            editor.set_placeholder_text("Filter events...", window, cx);
+            editor.set_placeholder_text(&t!("zed.telemetry_log.filter_placeholder"), window, cx);
             editor
         });
 
@@ -578,7 +579,7 @@ impl Render for TelemetryLogToolbarItemView {
             .child(
                 IconButton::new("clear_events", IconName::Trash)
                     .icon_size(IconSize::Small)
-                    .tooltip(Tooltip::text("Clear Events"))
+                    .tooltip(Tooltip::text(t!("zed.telemetry_log.clear_events")))
                     .disabled(!has_events)
                     .on_click(cx.listener(move |_this, _, _window, cx| {
                         telemetry_log_clone.update(cx, |log, cx| {
@@ -589,7 +590,7 @@ impl Render for TelemetryLogToolbarItemView {
             .child(
                 IconButton::new("open_log_file", IconName::File)
                     .icon_size(IconSize::Small)
-                    .tooltip(Tooltip::text("Open Raw Log File"))
+                    .tooltip(Tooltip::text(t!("zed.telemetry_log.open_raw_log_file")))
                     .on_click(|_, _window, cx| {
                         let path = Telemetry::log_file_path();
                         cx.open_url(&format!("file://{}", path.display()));

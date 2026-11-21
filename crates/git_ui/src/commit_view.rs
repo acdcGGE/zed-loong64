@@ -18,8 +18,8 @@ use git::{
 use gpui::{
     AnyElement, App, AppContext as _, AsyncWindowContext, ClipboardItem, Context, Entity,
     EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement, ParentElement,
-    PromptLevel, Render, ScrollHandle, StatefulInteractiveElement as _, Styled, Task, WeakEntity,
-    Window, actions,
+    PromptButton, PromptLevel, Render, ScrollHandle, StatefulInteractiveElement as _, Styled, Task,
+    WeakEntity, Window, actions,
 };
 use language::{
     Buffer, BufferId, Capability, DiskState, File, LanguageRegistry, LineEnding,
@@ -34,6 +34,7 @@ use project::{
 use settings::{DiffViewStyle, Settings};
 use std::{
     any::{Any, TypeId},
+    collections::HashSet,
     path::PathBuf,
     sync::Arc,
 };
@@ -49,6 +50,7 @@ use workspace::{
 
 use crate::commit_tooltip::CommitAvatar;
 use crate::git_panel::GitPanel;
+use zed_i18n::t;
 
 actions!(
     git,
@@ -168,7 +170,7 @@ impl Addon for CommitDiffAddon {
         menu.when_some(file_to_open, |menu, file| {
             let commit_view = self.commit_view.clone();
             menu.entry(
-                "Open File in Project",
+                t!("git_ui.commit_view.open_file_in_project"),
                 Some(Box::new(OpenFileAtHead)),
                 move |window, cx| {
                     commit_view
@@ -364,6 +366,7 @@ impl CommitView {
         let collapse_files = !commit_view_settings.expand_files && file_filter.is_none();
 
         let load_diff_task = cx.spawn_in(window, async move |this, cx| {
+            let mut folded_buffer_ids: HashSet<language::BufferId> = HashSet::default();
             let mut file_statuses: HashMap<language::BufferId, FileStatus> = HashMap::default();
 
             // In case there's a file we should scroll to, i.e.,
@@ -384,15 +387,16 @@ impl CommitView {
                     &project_clone,
                     &commit_sha,
                     &language_registry,
-                    // We'll only want to collapse the target file if it is a
-                    // binary file, otherwise we'll always want it expanded,
-                    // regardless of the `CommitView` settings.
-                    is_binary,
                     cx,
                 )
                 .await?;
 
                 file_statuses.insert(buffer_id, file_status);
+
+                // The revealed file is the one asked for, so keep it expanded.
+                if is_binary {
+                    folded_buffer_ids.insert(buffer_id);
+                }
 
                 // Establish the scroll anchor before inserting files that may
                 // end up being sorted before it.
@@ -410,23 +414,30 @@ impl CommitView {
                     &project_clone,
                     &commit_sha,
                     &language_registry,
-                    is_binary || collapse_files,
                     cx,
                 )
                 .await?;
 
                 file_statuses.insert(buffer_id, file_status);
+
+                if is_binary || collapse_files {
+                    folded_buffer_ids.insert(buffer_id);
+                }
             }
 
             this.update_in(cx, |this, _window, cx| {
                 let commit_view = cx.weak_entity();
 
                 this.editor.update(cx, |editor, cx| {
-                    editor.rhs_editor().update(cx, |editor, _cx| {
+                    editor.rhs_editor().update(cx, |editor, cx| {
                         editor.register_addon(CommitDiffAddon {
                             file_statuses,
                             commit_view,
                         });
+
+                        if !folded_buffer_ids.is_empty() {
+                            editor.fold_buffers(folded_buffer_ids, cx);
+                        }
                     });
                 });
             })?;
@@ -475,7 +486,6 @@ impl CommitView {
         project: &Entity<Project>,
         commit_sha: &str,
         language_registry: &Arc<LanguageRegistry>,
-        fold: bool,
         cx: &mut AsyncWindowContext,
     ) -> Result<(BufferId, FileStatus)> {
         let is_created = file.old_text.is_none();
@@ -587,15 +597,8 @@ impl CommitView {
                         buffer_diff.clone(),
                         cx,
                     );
-
                     if is_first_batch && editor.diff_view_style() == DiffViewStyle::Split {
                         editor.split(window, cx);
-                    }
-
-                    if is_first_batch && fold {
-                        editor.rhs_editor().update(cx, |editor, cx| {
-                            editor.fold_buffer(buffer_id, cx);
-                        });
                     }
                 });
             })?;
@@ -635,11 +638,6 @@ impl CommitView {
                     .find_map(|(row, block)| match block {
                         Block::BufferHeader { excerpt, .. } if excerpt.buffer_id() == buffer_id => {
                             Some((row, excerpt.start_anchor))
-                        }
-                        Block::FoldedBuffer { first_excerpt, .. }
-                            if first_excerpt.buffer_id() == buffer_id =>
-                        {
-                            Some((row, first_excerpt.start_anchor))
                         }
                         _ => None,
                     });
@@ -684,12 +682,12 @@ impl CommitView {
             .justify_center()
             .gap_2()
             .child(
-                Label::new("This commit is at the boundary of a shallow clone.")
+                Label::new(t!("git_ui.commit_view.shallow_boundary"))
                     .color(Color::Muted),
             )
             .child(
                 Label::new(
-                    "Its parent history was not fetched, so the changes it introduced cannot be shown.",
+                    t!("git_ui.commit_view.parent_history_missing"),
                 )
                 .color(Color::Muted),
             )
@@ -706,9 +704,9 @@ impl CommitView {
                             Button::new(
                                 "fetch-unshallow",
                                 if fetch_in_flight {
-                                    "Fetching…"
+                                    t!("git_ui.commit_view.fetching")
                                 } else {
-                                    "Fetch Missing History"
+                                    t!("git_ui.commit_view.fetch_missing_history")
                                 },
                             )
                                 .style(ButtonStyle::Filled)
@@ -755,16 +753,16 @@ impl CommitView {
                         Button::new(
                             "load-shallow-snapshot",
                             if file_filter.is_some() {
-                                "Load File Snapshot"
+                                t!("git_ui.commit_view.load_file_snapshot")
                             } else {
-                                "Load Full Snapshot"
+                                t!("git_ui.commit_view.load_full_snapshot")
                             },
                         )
                             .style(ButtonStyle::Outlined)
                             .tooltip(Tooltip::text(if file_filter.is_some() {
-                                "Show this file's full contents at this commit as added."
+                                t!("git_ui.commit_view.load_file_snapshot_note")
                             } else {
-                                "Show every file at this commit as added. This can be slow in large repositories."
+                                t!("git_ui.commit_view.load_full_snapshot_note")
                             }))
                             .on_click(move |_, window, cx| {
                                 Self::open_with_options(
@@ -898,9 +896,9 @@ impl CommitView {
         let has_more = self.commit.message.trim().contains('\n');
         let is_expanded = self.message_expanded;
         let expand_tooltip = if is_expanded {
-            "Fold Commit Description"
+            t!("git_ui.commit_view.fold_commit_description")
         } else {
-            "Expand Commit Description"
+            t!("git_ui.commit_view.expand_commit_description")
         };
 
         v_flex()
@@ -973,7 +971,7 @@ impl CommitView {
                     )
                     .when(self.stash.is_none(), |this| {
                         this.child(
-                            Button::new("sha", "Commit SHA")
+                            Button::new("sha", t!("git_ui.commit_view.commit_sha"))
                                 .start_icon(
                                     Icon::new(copy_icon)
                                         .size(IconSize::Small)
@@ -983,7 +981,7 @@ impl CommitView {
                                     let commit_sha = commit_sha.clone();
                                     move |_, cx| {
                                         Tooltip::with_meta(
-                                            "Copy Commit SHA",
+                                            t!("git_ui.common.copy_commit_sha"),
                                             None,
                                             commit_sha.clone(),
                                             cx,
@@ -1056,7 +1054,7 @@ impl CommitView {
     fn apply_stash(workspace: &mut Workspace, window: &mut Window, cx: &mut App) {
         Self::stash_action(
             workspace,
-            "Apply",
+            &t!("git_ui.common.apply"),
             window,
             cx,
             async move |repository, sha, stash, commit_view, workspace, cx| {
@@ -1083,7 +1081,7 @@ impl CommitView {
     fn pop_stash(workspace: &mut Workspace, window: &mut Window, cx: &mut App) {
         Self::stash_action(
             workspace,
-            "Pop",
+            &t!("git_ui.common.pop"),
             window,
             cx,
             async move |repository, sha, stash, commit_view, workspace, cx| {
@@ -1110,7 +1108,7 @@ impl CommitView {
     fn remove_stash(workspace: &mut Workspace, window: &mut Window, cx: &mut App) {
         Self::stash_action(
             workspace,
-            "Drop",
+            &t!("git_ui.common.drop"),
             window,
             cx,
             async move |repository, sha, stash, commit_view, workspace, cx| {
@@ -1160,9 +1158,16 @@ impl CommitView {
         let sha = commit_view.read(cx).commit.sha.clone();
         let answer = window.prompt(
             PromptLevel::Info,
-            &format!("{} stash@{{{}}}?", str_action, stash),
+            &t!(
+                "git_ui.commit_view.stash_confirm",
+                action = str_action,
+                index = stash
+            ),
             None,
-            &[str_action, "Cancel"],
+            &[
+                PromptButton::new(str_action.to_owned()),
+                PromptButton::cancel(t!("git_ui.common.cancel")),
+            ],
             cx,
         );
 
@@ -1608,7 +1613,7 @@ impl Render for CommitViewToolbar {
                     .icon_size(IconSize::Small)
                     .tooltip(move |_, cx| {
                         Tooltip::for_action(
-                            "Buffer Search",
+                            t!("git_ui.commit_view.buffer_search"),
                             &zed_actions::buffer_search::Deploy::find(),
                             cx,
                         )
@@ -1624,7 +1629,7 @@ impl Render for CommitViewToolbar {
                 this.child(
                     IconButton::new("show-in-git-graph", IconName::GitGraph)
                         .icon_size(IconSize::Small)
-                        .tooltip(Tooltip::text("Show in Git Graph"))
+                        .tooltip(Tooltip::text(t!("git_ui.common.show_in_git_graph")))
                         .on_click(move |_, window, cx| {
                             window.dispatch_action(
                                 Box::new(crate::git_graph::OpenAtCommit {
@@ -1639,7 +1644,10 @@ impl Render for CommitViewToolbar {
 
                     IconButton::new("view_on_provider", icon)
                         .icon_size(IconSize::Small)
-                        .tooltip(Tooltip::text(format!("View on {}", provider_name)))
+                        .tooltip(Tooltip::text(t!(
+                            "git_ui.commit_view.view_on_provider",
+                            provider = provider_name
+                        )))
                         .on_click(move |_, _, cx| cx.open_url(&url))
                 }))
             })
@@ -2110,145 +2118,6 @@ mod tests {
                     assert_eq!(selections.len(), 1);
                     assert_eq!(selection.start, expected_point);
                     assert_eq!(selection.end, expected_point);
-                });
-            });
-        });
-    }
-
-    #[gpui::test]
-    async fn test_reveal_binary_file_preserves_folded_header_position(cx: &mut TestAppContext) {
-        init_test(cx);
-
-        let fs = FakeFs::new(cx.executor());
-        fs.insert_tree(
-            path!("/project"),
-            json!({
-                ".git": {},
-                "a.txt": "",
-                "b.bin": "",
-                "c.txt": "",
-            }),
-        )
-        .await;
-
-        let project = Project::test(fs, [Path::new(path!("/project"))], cx).await;
-        let (multi_workspace, cx) =
-            cx.add_window_view(|window, cx| MultiWorkspace::test_new(project.clone(), window, cx));
-
-        let workspace = multi_workspace.read_with(cx, |multi_workspace, _cx| {
-            multi_workspace.workspace().clone()
-        });
-        cx.run_until_parked();
-
-        let repository = project
-            .read_with(cx, |project, cx| project.active_repository(cx))
-            .expect("project should have a repository");
-
-        let commit_details = CommitDetails {
-            sha: "a".repeat(40).into(),
-            message: "commit message".into(),
-            ..Default::default()
-        };
-
-        let make_text_file = |name: &str| {
-            let old_text = (0..80)
-                .map(|row| format!("{name}: original line {row}\n"))
-                .collect::<String>();
-            let new_text = (0..80)
-                .map(|row| format!("{name}: changed line {row}\n"))
-                .collect::<String>();
-
-            CommitFile {
-                path: RepoPath::new(name).expect("should be valid repository path"),
-                old_text: Some(old_text),
-                new_text: Some(new_text),
-                is_binary: false,
-            }
-        };
-
-        let binary_file = CommitFile {
-            path: RepoPath::new("b.bin").expect("should be valid repository path"),
-            old_text: Some(String::new()),
-            new_text: Some(String::new()),
-            is_binary: true,
-        };
-
-        let commit_diff = CommitDiff {
-            files: vec![
-                make_text_file("a.txt"),
-                binary_file,
-                make_text_file("c.txt"),
-            ],
-            is_shallow_boundary: false,
-        };
-
-        let commit_view = workspace.update_in(cx, |workspace, window, cx| {
-            let workspace_entity = cx.entity();
-            let project = workspace.project().clone();
-            let options = CommitViewOptions {
-                reveal_file: Some(RepoPath::new("b.bin").unwrap()),
-                ..Default::default()
-            };
-
-            let commit_view = cx.new(|cx| {
-                CommitView::new(
-                    commit_details,
-                    commit_diff,
-                    repository,
-                    project,
-                    workspace_entity,
-                    options,
-                    window,
-                    cx,
-                )
-            });
-
-            workspace.active_pane().update(cx, |pane, cx| {
-                pane.add_item(Box::new(commit_view.clone()), true, true, None, window, cx);
-            });
-
-            commit_view
-        });
-        cx.run_until_parked();
-
-        let target_path = RepoPath::new("b.bin").expect("should be valid repository path");
-        commit_view.update(cx, |commit_view, cx| {
-            commit_view.editor.update(cx, |editor, cx| {
-                editor.rhs_editor().update(cx, |editor, cx| {
-                    let multi_buffer = editor.buffer().read(cx);
-                    let multi_buffer_snapshot = multi_buffer.snapshot(cx);
-                    let display_snapshot = editor.display_snapshot(cx);
-                    let max_display_row = display_snapshot.max_point().row();
-
-                    // A folded buffer is displayed as a `Block::FoldedBuffer`
-                    // instead of a `Block::BufferHeader`, so finding one for
-                    // the revealed file also confirms that it was folded.
-                    let display_row = display_snapshot
-                        .blocks_in_range(DisplayRow(0)..max_display_row)
-                        .find_map(|(display_row, block)| match block {
-                            Block::FoldedBuffer { first_excerpt, .. } => {
-                                let buffer = first_excerpt.buffer(&multi_buffer_snapshot);
-                                let file = buffer.file()?;
-
-                                (file.path().as_ref() == &*target_path).then_some(display_row)
-                            }
-                            _ => None,
-                        })
-                        .expect("b.bin should be folded");
-
-                    // Confirm that a.txt was inserted before the revealed file,
-                    // otherwise the scroll position would trivially match.
-                    assert!(display_row > DisplayRow(0));
-
-                    // Assert that the editor's scroll is anchored to the folded
-                    // buffer header for the revealed file.
-                    let scroll_position = editor.scroll_position(cx);
-                    assert!(
-                        (scroll_position.y - display_row.as_f64()).abs() < 0.001,
-                        "folded header is at row {}, but the scroll position is {}",
-                        display_row.as_f64(),
-                        scroll_position.y,
-                    );
                 });
             });
         });

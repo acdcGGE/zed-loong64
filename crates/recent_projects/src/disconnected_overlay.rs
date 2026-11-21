@@ -6,6 +6,7 @@ use ui::{ElevationIndex, Modal, ModalFooter, ModalHeader, Section, prelude::*};
 use workspace::{
     ModalView, MultiWorkspace, OpenOptions, Workspace, notifications::DetachAndPromptErr,
 };
+use zed_i18n::t;
 
 use crate::open_remote_project;
 
@@ -134,7 +135,12 @@ impl DisconnectedOverlay {
             .await?;
             Ok(())
         })
-        .detach_and_prompt_err("Failed to reconnect", window, cx, |_, _, _| None);
+        .detach_and_prompt_err(
+            &t!("recent_projects.disconnected.failed_to_reconnect"),
+            window,
+            cx,
+            |_, _, _| None,
+        );
     }
 
     fn cancel(&mut self, _: &menu::Cancel, _: &mut Window, cx: &mut Context<Self>) {
@@ -149,25 +155,29 @@ impl Render for DisconnectedOverlay {
 
         let message = match &self.host {
             Host::CollabGuestProject => {
-                "Your connection to the remote project has been lost.".to_string()
+                t!("recent_projects.disconnected.connection_lost_collab").to_string()
             }
             Host::RemoteServerProject(options, server_not_running) => {
                 let autosave = if ProjectSettings::get_global(cx)
                     .session
                     .restore_unsaved_buffers
                 {
-                    "\nUnsaved changes are stored locally."
+                    t!("recent_projects.disconnected.autosave_note").to_string()
                 } else {
-                    ""
+                    String::new()
                 };
                 let reason = if *server_not_running {
-                    "process exiting unexpectedly"
+                    t!("recent_projects.disconnected.reason_process_exit").to_string()
                 } else {
-                    "not responding"
+                    t!("recent_projects.disconnected.reason_not_responding").to_string()
                 };
                 format!(
-                    "Your connection to {} has been lost due to the server {reason}.{autosave}",
-                    options.display_name(),
+                    "{}{autosave}",
+                    t!(
+                        "recent_projects.disconnected.connection_lost_server",
+                        server = options.display_name(),
+                        reason = reason
+                    )
                 )
             }
         };
@@ -182,9 +192,10 @@ impl Render for DisconnectedOverlay {
             .child(
                 Modal::new("disconnected", None)
                     .header(
-                        ModalHeader::new()
-                            .show_dismiss_button(true)
-                            .child(Headline::new("Disconnected").size(HeadlineSize::Small)),
+                        ModalHeader::new().show_dismiss_button(true).child(
+                            Headline::new(t!("recent_projects.disconnected.title"))
+                                .size(HeadlineSize::Small),
+                        ),
                     )
                     .section(Section::new().child(Label::new(message)))
                     .footer(
@@ -192,20 +203,28 @@ impl Render for DisconnectedOverlay {
                             h_flex()
                                 .gap_2()
                                 .child(
-                                    Button::new("close-window", "Close Window")
-                                        .style(ButtonStyle::Filled)
-                                        .layer(ElevationIndex::ModalSurface)
-                                        .on_click(cx.listener(move |_, _, window, _| {
+                                    Button::new(
+                                        "close-window",
+                                        t!("recent_projects.disconnected.close_window"),
+                                    )
+                                    .style(ButtonStyle::Filled)
+                                    .layer(ElevationIndex::ModalSurface)
+                                    .on_click(cx.listener(
+                                        move |_, _, window, _| {
                                             window.remove_window();
-                                        })),
+                                        },
+                                    )),
                                 )
                                 .when(can_reconnect, |el| {
                                     el.child(
-                                        Button::new("reconnect", "Reconnect")
-                                            .style(ButtonStyle::Filled)
-                                            .layer(ElevationIndex::ModalSurface)
-                                            .start_icon(Icon::new(IconName::ArrowCircle))
-                                            .on_click(cx.listener(Self::handle_reconnect)),
+                                        Button::new(
+                                            "reconnect",
+                                            t!("recent_projects.disconnected.reconnect"),
+                                        )
+                                        .style(ButtonStyle::Filled)
+                                        .layer(ElevationIndex::ModalSurface)
+                                        .start_icon(Icon::new(IconName::ArrowCircle))
+                                        .on_click(cx.listener(Self::handle_reconnect)),
                                     )
                                 }),
                         ),

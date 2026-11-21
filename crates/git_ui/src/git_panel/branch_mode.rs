@@ -704,9 +704,11 @@ impl GitPanel {
 
     pub(super) fn render_changes_mode_menu(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let label: SharedString = match (self.is_branch_mode(), self.branch_base.effective()) {
-            (true, Some(base_ref)) => format!("Since {base_ref}").into(),
-            (true, None) => "Branch Changes".into(),
-            (false, _) => "Uncommitted".into(),
+            (true, Some(base_ref)) => {
+                t!("git_ui.git_panel.changes_mode_since", base_ref = base_ref).into()
+            }
+            (true, None) => t!("git_ui.git_panel.section_branch_changes").into(),
+            (false, _) => t!("git_ui.git_panel.changes_mode_uncommitted").into(),
         };
         let panel = cx.weak_entity();
 
@@ -720,7 +722,7 @@ impl GitPanel {
                             .size(IconSize::XSmall)
                             .color(Color::Muted),
                     ),
-                Tooltip::text("Choose Which Changes to Show"),
+                Tooltip::text(t!("git_ui.git_panel.changes_mode_tooltip")),
             )
             .menu(move |window, cx| Some(Self::changes_mode_menu(panel.clone(), window, cx)))
             .anchor(Anchor::TopLeft)
@@ -738,7 +740,7 @@ impl GitPanel {
             // The check goes at the end so "Uncommitted" lines up with the
             // submenu trigger, which has no check slot.
             menu.toggleable_entry(
-                "Uncommitted",
+                t!("git_ui.git_panel.changes_mode_uncommitted"),
                 !is_branch_mode,
                 IconPosition::End,
                 Some(ShowUncommittedChanges.boxed_clone()),
@@ -753,9 +755,12 @@ impl GitPanel {
                     }
                 },
             )
-            .submenu("Compare Against Base", move |menu, window, cx| {
-                Self::compare_against_base_submenu(menu, panel.clone(), window, cx)
-            })
+            .submenu(
+                t!("git_ui.git_panel.compare_against_base"),
+                move |menu, window, cx| {
+                    Self::compare_against_base_submenu(menu, panel.clone(), window, cx)
+                },
+            )
         })
     }
 
@@ -827,17 +832,17 @@ impl GitPanel {
         let message: SharedString = if branch_list
             .is_some_and(|branch_list| branch_list.tree_diff_error().is_some())
         {
-            "Couldn't load branch changes".into()
+            t!("git_ui.git_panel.branch_changes_load_failed").into()
         } else if branch_list.is_some_and(|branch_list| branch_list.statuses_by_path().is_none())
             || self.branch_base.is_resolving()
         {
             // Only the first load for a base shows this, so refreshes after
             // every status change don't flicker.
-            "Loading branch changes…".into()
+            t!("git_ui.git_panel.branch_changes_loading").into()
         } else if let Some(base_ref) = self.branch_base.effective() {
-            format!("No changes since {base_ref}").into()
+            t!("git_ui.git_panel.no_changes_since", base_ref = base_ref).into()
         } else {
-            "No default branch found. Pick a base branch.".into()
+            t!("git_ui.git_panel.no_default_branch").into()
         };
 
         h_flex()
@@ -861,7 +866,10 @@ impl GitPanel {
                 .context(self.focus_handle.clone())
                 .when(is_file_or_bulk, |context_menu| {
                     context_menu
-                        .action("Open Diff", menu::Confirm.boxed_clone())
+                        .action(
+                            t!("git_ui.git_panel.open_diff"),
+                            menu::Confirm.boxed_clone(),
+                        )
                         .action(titles.view_file, ViewFile.boxed_clone())
                         .separator()
                 })

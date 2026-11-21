@@ -130,7 +130,7 @@
 
 //! List of "tainted files" that the user may not operate on
 
-use crate::{ProjectPanel, RemovalKind};
+use crate::ProjectPanel;
 use anyhow::{Context, Result, anyhow};
 use client::{ErrorCode, ErrorExt as _, RpcError};
 use fs::{TrashId, TrashRestoreError};
@@ -152,6 +152,7 @@ use workspace::{
     },
 };
 use worktree::{CreatedEntry, Worktree};
+use zed_i18n::t;
 
 enum Operation {
     Trash(ProjectPath),
@@ -429,14 +430,15 @@ enum UndoMessage {
 }
 
 impl UndoMessage {
-    fn error_title(&self) -> &'static str {
+    fn error_title(&self) -> String {
         match self {
             UndoMessage::Changed(_) => {
-                "this is a bug in the manage_undo_and_redo task please report"
+                t!("project_panel.undo.bug_report")
             }
-            UndoMessage::Undo => "Undo Failed",
-            UndoMessage::Redo => "Redo Failed",
+            UndoMessage::Undo => t!("project_panel.undo.undo_failed"),
+            UndoMessage::Redo => t!("project_panel.undo.redo_failed"),
         }
+        .to_string()
     }
 }
 
@@ -988,15 +990,43 @@ impl Inner {
     where
         S: AsRef<str>,
     {
-        let prompt = ProjectPanel::build_removal_prompt(RemovalKind::Trash, names, dirty_buffers);
+        let (message, detail) = if names.len() == 1 {
+            let name = names[0].as_ref();
+            let msg = format!("Are you sure you want to trash '{}'?", name);
+            let detail = if dirty_buffers > 0 {
+                Some(format!(
+                    "This file has {} unsaved buffer(s). Trashing it will discard those changes.",
+                    dirty_buffers
+                ))
+            } else {
+                None
+            };
+            (msg, detail)
+        } else {
+            let name_list = names
+                .iter()
+                .map(|n| format!("• {}", n.as_ref()))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let msg = format!("Are you sure you want to trash {} files?", names.len());
+            let detail = if dirty_buffers > 0 {
+                Some(format!(
+                    "Files to trash:\n{}\n\n{} file(s) have unsaved changes that will be discarded.",
+                    name_list, dirty_buffers
+                ))
+            } else {
+                Some(format!("Files to trash:\n{}", name_list))
+            };
+            (msg, detail)
+        };
         let answer = self
             .panel
             .update_in(cx, |_panel, window, cx| {
                 window.prompt(
                     PromptLevel::Info,
-                    &prompt.message,
-                    prompt.detail,
-                    &[prompt.confirmation_label, "Cancel"],
+                    &message,
+                    detail.as_deref(),
+                    &["Trash", "Cancel"],
                     cx,
                 )
             })?

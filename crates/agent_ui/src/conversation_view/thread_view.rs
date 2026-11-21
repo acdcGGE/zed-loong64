@@ -5,6 +5,7 @@ use crate::{
     open_abs_path_at_point, project_path_for_file_link,
     thread_metadata_store::{ThreadId, ThreadMetadataStore},
 };
+use zed_i18n::t;
 use agent_client_protocol::v2::schema as acp_v2;
 use std::{cell::RefCell, path::Path};
 
@@ -68,7 +69,7 @@ pub(super) fn subagent_label(thread: &AcpThread) -> SharedString {
         .subagent_association()
         .and_then(|association| association.title.clone())
         .or_else(|| thread.title())
-        .unwrap_or_else(|| "Subagent".into())
+        .unwrap_or_else(|| t!("agent_ui.thread_view.subagent").into())
 }
 
 /// Most agents echo an accepted prompt almost immediately, so the in-flight status row
@@ -270,7 +271,7 @@ impl ThreadFeedbackState {
                 cx,
             );
             editor.set_placeholder_text(
-                "What went wrong? Share your feedback so we can improve.",
+                t!("agent_ui.thread_view.feedback_placeholder").as_ref(),
                 window,
                 cx,
             );
@@ -535,7 +536,7 @@ fn render_cat_numbered_code_block(
                 .right_0()
                 .justify_end()
                 .visible_on_hover("read-file-code-block")
-                .child(CopyButton::new(copy_button_id, code).tooltip_label("Copy Code")),
+                .child(CopyButton::new(copy_button_id, code).tooltip_label(t!("agent_ui.thread_view.copy_code"))),
         )
         .into_any_element()
 }
@@ -1455,7 +1456,7 @@ impl ThreadView {
         match command {
             PromptLocalCommand::ThumbsUp => {
                 self.handle_feedback_click(ThreadFeedback::Positive, window, cx);
-                self.show_local_command_toast("Thanks for your feedback!", cx);
+                self.show_local_command_toast(t!("agent_ui.thread_view.thanks_feedback"), cx);
             }
             PromptLocalCommand::ThumbsDown => {
                 self.handle_feedback_click(ThreadFeedback::Negative, window, cx);
@@ -1963,17 +1964,17 @@ impl ThreadView {
                             SubmissionState::Pending => ("Sending…".into(), None, false),
                             SubmissionState::Accepted { echoed: false, .. } => (
                                 "Waiting…".into(),
-                                Some("The agent accepted this message but hasn't shown it yet.".into()),
+                                Some(t!("agent_ui.thread_view.submission_detail_waiting").into()),
                                 false,
                             ),
                             SubmissionState::Disconnected { receipt: Some(_) } => (
                                 "Connection lost".into(),
-                                Some("The agent accepted this message, then the connection was lost.".into()),
+                                Some(t!("agent_ui.thread_view.submission_detail_accepted_connection_lost").into()),
                                 true,
                             ),
                             SubmissionState::Disconnected { receipt: None } => (
                                 "Connection lost".into(),
-                                Some("The connection was lost before the agent confirmed this message.".into()),
+                                Some(t!("agent_ui.thread_view.submission_detail_connection_lost_unknown").into()),
                                 true,
                             ),
                             SubmissionState::Failed(error) => (
@@ -1981,8 +1982,8 @@ impl ThreadView {
                                 Some(util::truncate_and_trailoff(error, 500).into()),
                                 true,
                             ),
-                            SubmissionState::Cancelled => ("Cancelled".into(), None, true),
-                            _ => ("Message".into(), None, false),
+                            SubmissionState::Cancelled => (t!("agent_ui.thread_view.cancelled").into(), None, true),
+                            _ => (t!("agent_ui.thread_view.submission_status_fallback").into(), None, false),
                         };
                     let preview: String =
                         Itertools::intersperse(Self::submission_text_parts(&record.content), " ")
@@ -2052,7 +2053,7 @@ impl ThreadView {
                                 div()
                                     .debug_selector(move || format!("copy-submission-{row_id}"))
                                     .child(
-                                        Button::new(("copy-submission", row_id), "Copy")
+                                        Button::new(("copy-submission", row_id), t!("agent_ui.message_editor.copy"))
                                             .label_size(LabelSize::Small)
                                             .on_click(cx.listener(move |this, _, _, cx| {
                                                 if let Some(record) =
@@ -2076,9 +2077,9 @@ impl ThreadView {
                                             format!("restore-submission-{row_id}")
                                         })
                                         .child(
-                                            Button::new(("restore-submission", row_id), "Restore")
+                                            Button::new(("restore-submission", row_id), t!("agent_ui.thread_view.submission_restore"))
                                                 .label_size(LabelSize::Small)
-                                                .tooltip(Tooltip::text("Copy into an empty composer. The saved submission is kept until discarded."))
+                                                .tooltip(Tooltip::text(t!("agent_ui.thread_view.submission_restore_tooltip")))
                                                 .on_click(cx.listener(
                                                     move |this, _, window, cx| {
                                                         this.restore_submission(
@@ -2093,7 +2094,7 @@ impl ThreadView {
                             })
                             .when(settled, |this| {
                                 this.child(
-                                    Button::new(("discard-submission", row_id), "Discard")
+                                    Button::new(("discard-submission", row_id), t!("agent_ui.thread_view.submission_discard"))
                                         .label_size(LabelSize::Small)
                                         .on_click(cx.listener(move |this, _, _, cx| {
                                             this.thread.update(cx, |thread, cx| {
@@ -2633,7 +2634,7 @@ impl ThreadView {
                 ThreadError::ZedPaymentRequired => (
                     "payment_required",
                     None,
-                    "You reached your free usage limit. Upgrade to Zed Pro for more prompts."
+                    t!("agent_ui.thread_view.payment_required_message")
                         .into(),
                 ),
                 ThreadError::Refusal => {
@@ -3963,7 +3964,7 @@ impl ThreadView {
                     .dismiss_action(
                         IconButton::new("dismiss-refusal-fallback", IconName::Close)
                             .icon_size(IconSize::Small)
-                            .tooltip(Tooltip::text("Dismiss"))
+                            .tooltip(Tooltip::text(t!("agent_ui.end_trial_upsell.dismiss")))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.thread_retry_status = None;
                                 cx.notify();
@@ -3983,7 +3984,7 @@ impl ThreadView {
 
         let retry_message = if state.max_attempts == 1 {
             if next_attempt_in_secs == 1 {
-                "Retrying. Next attempt in 1 second.".to_string()
+                t!("agent_ui.thread_view.retry_next_attempt_1s").to_string()
             } else {
                 format!("Retrying. Next attempt in {next_attempt_in_secs} seconds.")
             }
@@ -4260,7 +4261,7 @@ impl ThreadView {
                                     .tooltip({
                                         move |_, cx| {
                                             Tooltip::with_meta(
-                                                "Go to File",
+                                                t!("agent_ui.thread_view.go_to_file"),
                                                 None,
                                                 full_path.clone(),
                                                 cx,
@@ -4310,7 +4311,7 @@ impl ThreadView {
                 cx.notify();
             }))
             .child(
-                Button::new("review", "Review")
+                Button::new("review", t!("agent_ui.agent_diff.review"))
                     .label_size(LabelSize::Small)
                     .on_click({
                         let buffer = buffer.clone();
@@ -4320,7 +4321,7 @@ impl ThreadView {
                     }),
             )
             .child(
-                Button::new(("reject-file", index), "Reject")
+                Button::new(("reject-file", index), t!("agent_ui.agent_diff.reject"))
                     .label_size(LabelSize::Small)
                     .disabled(pending_edits)
                     .on_click({
@@ -4345,7 +4346,7 @@ impl ThreadView {
                     }),
             )
             .child(
-                Button::new(("keep-file", index), "Keep")
+                Button::new(("keep-file", index), t!("agent_ui.agent_diff.keep"))
                     .label_size(LabelSize::Small)
                     .disabled(pending_edits)
                     .on_click({
@@ -4381,7 +4382,7 @@ impl ThreadView {
                 let info = tool_call.subagent_session_info.as_ref()?;
                 let summary_text = tool_call.label.read(cx).source().to_string();
                 let subagent_summary = if summary_text.is_empty() {
-                    SharedString::from("Subagent")
+                    SharedString::from(t!("agent_ui.thread_view.subagent"))
                 } else {
                     SharedString::from(summary_text)
                 };
@@ -4605,7 +4606,7 @@ impl ThreadView {
                             .child(
                                 Button::new(
                                     format!("generic-permission-cancel-{request_id:?}"),
-                                    "Cancel",
+                                    t!("agent_ui.configure_context_server_modal.cancel"),
                                 )
                                 .label_size(LabelSize::Small)
                                 .on_click(cx.listener(
@@ -4660,7 +4661,7 @@ impl ThreadView {
                         .border_b_1()
                         .border_color(cx.theme().colors().border)
                         .child(
-                            Label::new("Subagents Awaiting Permission:")
+                            Label::new(t!("agent_ui.thread_view.subagents_awaiting_permission"))
                                 .size(LabelSize::Small)
                                 .color(Color::Muted),
                         )
@@ -4704,7 +4705,7 @@ impl ThreadView {
                                 )
                                 .child(
                                     div().visible_on_hover(&group).child(
-                                        Label::new("Scroll to Subagent")
+                                        Label::new(t!("agent_ui.thread_view.scroll_to_subagent"))
                                             .size(LabelSize::Small)
                                             .color(Color::Muted)
                                             .truncate(),
@@ -4780,7 +4781,7 @@ impl ThreadView {
         let label: SharedString = if pending_count > 1 {
             format!("Awaiting Confirmation ({pending_count})").into()
         } else {
-            "Awaiting Confirmation".into()
+            t!("agent_ui.thread_view.awaiting_confirmation").into()
         };
 
         let header = h_flex()
@@ -4803,7 +4804,7 @@ impl ThreadView {
                     .child(Label::new(label).size(LabelSize::Small).color(Color::Muted)),
             )
             .child(
-                Button::new("main-agent-permission-scroll-to", "Scroll")
+                Button::new("main-agent-permission-scroll-to", t!("agent_ui.thread_view.scroll"))
                     .label_size(LabelSize::Small)
                     .end_icon(
                         Icon::new(scroll_icon)
@@ -4829,7 +4830,7 @@ impl ThreadView {
     ) -> impl IntoElement {
         let queue_count = self.message_queue.len();
         let title: SharedString = if queue_count == 1 {
-            "1 Queued Message".into()
+            t!("agent_ui.thread_view.queued_message_single").into()
         } else {
             format!("{} Queued Messages", queue_count).into()
         };
@@ -4854,7 +4855,7 @@ impl ThreadView {
                     })),
             )
             .child(
-                Button::new("clear_queue", "Clear All")
+                Button::new("clear_queue", t!("agent_ui.thread_view.clear_all"))
                     .label_size(LabelSize::Small)
                     .key_binding(
                         KeyBinding::for_action(&ClearMessageQueue, cx)
@@ -4894,7 +4895,7 @@ impl ThreadView {
                     .min_w_0()
                     .gap_1()
                     .child(
-                        Label::new("Plan")
+                        Label::new(t!("agent_ui.thread_view.plan"))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     )
@@ -4936,7 +4937,7 @@ impl ThreadView {
                 IconButton::new("dismiss-plan", IconName::Close)
                     .icon_size(IconSize::XSmall)
                     .shape(ui::IconButtonShape::Square)
-                    .tooltip(Tooltip::text("Clear Plan"))
+                    .tooltip(Tooltip::text(t!("agent_ui.thread_view.clear_plan")))
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.thread.update(cx, |thread, cx| thread.clear_plan(cx));
                         cx.stop_propagation();
@@ -4992,7 +4993,7 @@ impl ThreadView {
                 .gap_1()
                 .truncate()
                 .child(
-                    Label::new("Current:")
+                    Label::new(t!("agent_ui.thread_view.current"))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
@@ -5036,7 +5037,7 @@ impl ThreadView {
                 .gap_1()
                 .justify_between()
                 .child(
-                    Label::new("Plan")
+                    Label::new(t!("agent_ui.thread_view.plan"))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
@@ -5312,7 +5313,7 @@ impl ThreadView {
         pending_edits: bool,
         cx: &Context<Self>,
     ) -> Div {
-        const EDIT_NOT_READY_TOOLTIP_LABEL: &str = "Wait until file edits are complete.";
+        let edit_not_ready_tooltip_label = t!("agent_ui.thread_view.edit_not_ready").to_string();
 
         let focus_handle = self.focus_handle(cx);
 
@@ -5360,7 +5361,7 @@ impl ThreadView {
                             };
 
                             this.child(
-                                Label::new("Edits")
+                                Label::new(t!("agent_ui.thread_view.edits"))
                                     .size(LabelSize::Small)
                                     .color(Color::Muted),
                             )
@@ -5401,7 +5402,7 @@ impl ThreadView {
                                 let focus_handle = focus_handle.clone();
                                 move |_window, cx| {
                                     Tooltip::for_action_in(
-                                        "Review Changes",
+                                        t!("agent_ui.thread_view.review_changes"),
                                         &OpenAgentDiff,
                                         &focus_handle,
                                         cx,
@@ -5414,11 +5415,11 @@ impl ThreadView {
                     )
                     .child(Divider::vertical().color(DividerColor::Border))
                     .child(
-                        Button::new("reject-all-changes", "Reject All")
+                        Button::new("reject-all-changes", t!("agent_ui.agent_diff.reject_all"))
                             .label_size(LabelSize::Small)
                             .disabled(pending_edits)
                             .when(pending_edits, |this| {
-                                this.tooltip(Tooltip::text(EDIT_NOT_READY_TOOLTIP_LABEL))
+                                this.tooltip(Tooltip::text(edit_not_ready_tooltip_label.clone()))
                             })
                             .key_binding(
                                 KeyBinding::for_action_in(&RejectAll, &focus_handle, cx)
@@ -5429,11 +5430,11 @@ impl ThreadView {
                             })),
                     )
                     .child(
-                        Button::new("keep-all-changes", "Keep All")
+                        Button::new("keep-all-changes", t!("agent_ui.agent_diff.keep_all"))
                             .label_size(LabelSize::Small)
                             .disabled(pending_edits)
                             .when(pending_edits, |this| {
-                                this.tooltip(Tooltip::text(EDIT_NOT_READY_TOOLTIP_LABEL))
+                                this.tooltip(Tooltip::text(edit_not_ready_tooltip_label.clone()))
                             })
                             .key_binding(
                                 KeyBinding::for_action_in(&KeepAll, &focus_handle, cx)
@@ -5543,7 +5544,7 @@ impl ThreadView {
                                                 IconButton::new("stop_subagent", IconName::Stop)
                                                     .icon_size(IconSize::Small)
                                                     .icon_color(Color::Error)
-                                                    .tooltip(Tooltip::text("Stop Subagent"))
+                                                    .tooltip(Tooltip::text(t!("agent_ui.thread_view.stop_subagent")))
                                                     .on_click(cx.listener(
                                                         move |this, _, _, cx| {
                                                             this.cancel_thread(&thread, cx)
@@ -5556,7 +5557,7 @@ impl ThreadView {
                                 .child(
                                     IconButton::new("minimize_subagent", IconName::Dash)
                                         .icon_size(IconSize::Small)
-                                        .tooltip(Tooltip::text("Minimize Subagent"))
+                                        .tooltip(Tooltip::text(t!("agent_ui.thread_view.minimize_subagent")))
                                         .on_click(move |_, window, cx| {
                                             let _ = server_view.update(cx, |server_view, cx| {
                                                 server_view.navigate_to_thread(
@@ -5737,13 +5738,13 @@ impl ThreadView {
         let (id, label, tooltip): (_, SharedString, _) = match thread.foreground_activity() {
             ForegroundActivity::Unconfirmed => (
                 "activity-unconfirmed",
-                "Activity unconfirmed".into(),
-                "The session is attached, but the agent has not reported its activity. You can send manually; automatic sends wait for confirmed Idle.",
+                t!("agent_ui.thread_view.activity_unconfirmed").into(),
+                t!("agent_ui.thread_view.activity_unconfirmed_tooltip"),
             ),
             ForegroundActivity::Unknown => (
                 "activity-unknown",
-                "Activity unknown".into(),
-                "The agent can't currently tell whether it is working. You can send manually; automatic sends wait for confirmed Idle.",
+                t!("agent_ui.thread_view.activity_unknown").into(),
+                t!("agent_ui.thread_view.activity_unknown_tooltip"),
             ),
             ForegroundActivity::Idle => {
                 let background_count = thread.background_work().map_or(0, <[_]>::len);
@@ -5753,11 +5754,11 @@ impl ThreadView {
                 (
                     "activity-background",
                     if background_count == 1 {
-                        "1 task in background".into()
+                        t!("agent_ui.thread_view.task_in_background").into()
                     } else {
                         format!("{background_count} tasks in background").into()
                     },
-                    "The agent finished responding, but work it started keeps running in the background, such as a dev server or a scheduled task.",
+                    t!("agent_ui.thread_view.background_work_tooltip"),
                 )
             }
             ForegroundActivity::Running | ForegroundActivity::RequiresAction => return None,
@@ -5781,7 +5782,7 @@ impl ThreadView {
     ) -> impl IntoElement {
         let focus_handle = self.message_editor.focus_handle(cx);
 
-        Button::new(("steer", index), "Steer")
+        Button::new(("steer", index), t!("agent_ui.thread_view.steer"))
             .label_size(LabelSize::Small)
             .toggle_state(steer_on)
             .selected_style(ButtonStyle::Tinted(TintColor::Accent))
@@ -5793,7 +5794,7 @@ impl ThreadView {
             })
             .tooltip(move |_window, cx| {
                 Tooltip::with_meta(
-                    "Steer",
+                    t!("agent_ui.thread_view.steer"),
                     None,
                     "Interrupt the agent at its next step to send this message. \
                      When off, queued messages wait for the agent to finish.",
@@ -5826,9 +5827,9 @@ impl ThreadView {
                 let editor = &entry.editor;
                 let is_next = index == 0;
                 let (icon_color, tooltip_text) = if is_next {
-                    (Color::Accent, "Next in Queue")
+                    (Color::Accent, t!("agent_ui.thread_view.next_in_queue"))
                 } else {
-                    (Color::Muted, "In Queue")
+                    (Color::Muted, t!("agent_ui.thread_view.in_queue"))
                 };
 
                 let editor_focused = editor.focus_handle(cx).is_focused(_window);
@@ -5873,9 +5874,9 @@ impl ThreadView {
                                     .icon_size(IconSize::Small)
                                     .tooltip(|_window, cx| {
                                         Tooltip::with_meta(
-                                            "Edit Queued Message",
+                                            t!("agent_ui.thread_view.edit_queued_message"),
                                             None,
-                                            "Type anything to edit",
+                                            t!("agent_ui.thread_view.type_anything_to_edit"),
                                             cx,
                                         )
                                     })
@@ -5891,7 +5892,7 @@ impl ThreadView {
                                 ))
                             })
                             .child(
-                                Button::new(("send_now_focused", index), "Send Now")
+                                Button::new(("send_now_focused", index), t!("agent_ui.thread_view.send_now"))
                                     .label_size(LabelSize::Small)
                                     .style(ButtonStyle::Outlined)
                                     .key_binding(
@@ -5920,13 +5921,13 @@ impl ThreadView {
                                         move |_window, cx| {
                                             if is_next {
                                                 Tooltip::for_action_in(
-                                                    "Remove Message from Queue",
+                                                    t!("agent_ui.thread_view.remove_message_from_queue"),
                                                     &RemoveFirstQueuedMessage,
                                                     &focus_handle,
                                                     cx,
                                                 )
                                             } else {
-                                                Tooltip::simple("Remove Message from Queue", cx)
+                                                Tooltip::simple(t!("agent_ui.thread_view.remove_message_from_queue"), cx)
                                             }
                                         }
                                     })
@@ -5943,13 +5944,13 @@ impl ThreadView {
                                         move |_window, cx| {
                                             if is_next {
                                                 Tooltip::for_action_in(
-                                                    "Edit",
+                                                    t!("agent_ui.thread_view.edit"),
                                                     &EditFirstQueuedMessage,
                                                     &focus_handle,
                                                     cx,
                                                 )
                                             } else {
-                                                Tooltip::simple("Edit", cx)
+                                                Tooltip::simple(t!("agent_ui.thread_view.edit"), cx)
                                             }
                                         }
                                     })
@@ -5965,7 +5966,7 @@ impl ThreadView {
                                 ))
                             })
                             .child(
-                                Button::new(("send_now", index), "Send Now")
+                                Button::new(("send_now", index), t!("agent_ui.thread_view.send_now"))
                                     .label_size(LabelSize::Small)
                                     .when(is_next, |this| this.style(ButtonStyle::Outlined))
                                     .when(is_next && message_editor.is_empty(cx), |this| {
@@ -6259,7 +6260,7 @@ impl ThreadView {
             (ThreadSandbox::Sandboxed(settings_policy), ThreadSandbox::Unsandboxed) => {
                 let settings = augment_settings_sandbox_policy(&settings_policy, baseline);
                 SandboxStatusTooltip::disabled_for_thread(sandbox_section(
-                    "Defined in your settings:",
+                    t!("agent_ui.thread_view.defined_in_settings"),
                     &settings,
                     true,
                 ))
@@ -6272,9 +6273,9 @@ impl ThreadView {
                 let thread = SandboxPolicyDisplay::from_policy(&thread_policy);
                 // Omit the per-thread section when it grants nothing extra.
                 let thread = (!sandbox_policy_grants_nothing(&thread))
-                    .then(|| sandbox_section("Allowed for this thread:", &thread, false));
+                    .then(|| sandbox_section(t!("agent_ui.thread_view.allowed_for_thread"), &thread, false));
                 SandboxStatusTooltip::enabled(
-                    sandbox_section("Defined in your settings:", &settings, true),
+                    sandbox_section(t!("agent_ui.thread_view.defined_in_settings"), &settings, true),
                     thread,
                 )
             }
@@ -6326,9 +6327,9 @@ impl ThreadView {
         let is_fast = matches!(thread.speed(), Some(Speed::Fast));
 
         let (tooltip_label, new_speed) = if is_fast {
-            ("Disable Fast Mode", Speed::Standard)
+            (t!("agent_ui.thread_view.disable_fast_mode"), Speed::Standard)
         } else {
-            ("Enable Fast Mode", Speed::Fast)
+            (t!("agent_ui.thread_view.enable_fast_mode"), Speed::Fast)
         };
 
         let focus_handle = self.message_editor.focus_handle(cx);
@@ -6347,7 +6348,12 @@ impl ThreadView {
                 PopoverMenu::new("fast-mode-warning")
                     .with_handle(self.fast_mode_menu_handle.clone())
                     .trigger_with_tooltip(icon_button, move |_, cx| {
-                        Tooltip::for_action_in(tooltip_label, &ToggleFastMode, &tooltip_focus, cx)
+                        Tooltip::for_action_in(
+                            tooltip_label.clone(),
+                            &ToggleFastMode,
+                            &tooltip_focus,
+                            cx,
+                        )
                     })
                     .menu(move |window, cx| {
                         let weak_self = weak_self.clone();
@@ -6365,7 +6371,7 @@ impl ThreadView {
                                     .into_any_element()
                             })
                             .separator()
-                            .item(ContextMenuEntry::new("Enable Now").handler({
+                            .item(ContextMenuEntry::new(t!("agent_ui.thread_view.enable_now")).handler({
                                 let weak_self = weak_self.clone();
                                 move |_window, cx| {
                                     weak_self
@@ -6376,7 +6382,7 @@ impl ThreadView {
                                 }
                             }))
                             .item(
-                                ContextMenuEntry::new("Enable and Don't Show Again").handler({
+                                ContextMenuEntry::new(t!("agent_ui.thread_view.enable_and_dont_show_again")).handler({
                                     let weak_self = weak_self.clone();
                                     let provider_id = provider_id.clone();
                                     let model_id = model_id;
@@ -6408,7 +6414,12 @@ impl ThreadView {
         Some(
             icon_button
                 .tooltip(move |_, cx| {
-                    Tooltip::for_action_in(tooltip_label, &ToggleFastMode, &focus_handle, cx)
+                    Tooltip::for_action_in(
+                        tooltip_label.clone(),
+                        &ToggleFastMode,
+                        &focus_handle,
+                        cx,
+                    )
                 })
                 .on_click(cx.listener(move |this, _, _window, cx| {
                     this.apply_fast_mode_speed(new_speed, cx);
@@ -6561,13 +6572,13 @@ impl ThreadView {
             (None, IconName::ThinkingMode, Color::Accent)
         } else if thinking {
             (
-                Some("Disable Thinking Mode"),
+                Some(t!("agent_ui.thread_view.disable_thinking_mode")),
                 IconName::ThinkingMode,
                 Color::Accent,
             )
         } else {
             (
-                Some("Enable Thinking Mode"),
+                Some(t!("agent_ui.thread_view.enable_thinking_mode")),
                 IconName::ThinkingModeOff,
                 Color::Custom(cx.theme().colors().icon_disabled.opacity(0.8)),
             )
@@ -6582,7 +6593,7 @@ impl ThreadView {
                 if let Some(tooltip_label) = tooltip_label {
                     this.tooltip(move |_, cx| {
                         Tooltip::for_action_in(
-                            tooltip_label,
+                            tooltip_label.clone(),
                             &ToggleThinkingMode,
                             &focus_handle,
                             cx,
@@ -6590,7 +6601,7 @@ impl ThreadView {
                     })
                 } else {
                     this.tooltip(Tooltip::text(
-                        "Thinking is always on at this effort level. Select a lower effort level to make it optional.",
+                        t!("agent_ui.thread_view.thinking_always_on_at_effort"),
                     ))
                 }
             });
@@ -6668,7 +6679,7 @@ impl ThreadView {
         let label = selected
             .clone()
             .or(default_effort_level)
-            .map_or("Select Effort".into(), |effort| effort.name);
+            .map_or(t!("agent_ui.thread_view.select_effort").into(), |effort| effort.name);
 
         let focus_handle = self.message_editor.focus_handle(cx);
         let show_cycle_row = supported_effort_levels.len() > 1;
@@ -6679,7 +6690,7 @@ impl ThreadView {
                     h_flex()
                         .gap_2()
                         .justify_between()
-                        .child(Label::new("Change Thinking Effort"))
+                        .child(Label::new(t!("agent_ui.config_options.change_thinking_effort")))
                         .child(KeyBinding::for_action_in(
                             &ToggleThinkingEffortMenu,
                             &focus_handle,
@@ -6695,7 +6706,7 @@ impl ThreadView {
                             .justify_between()
                             .border_t_1()
                             .border_color(cx.theme().colors().border_variant)
-                            .child(Label::new("Cycle Thinking Effort"))
+                            .child(Label::new(t!("agent_ui.config_options.cycle_thinking_effort")))
                             .child(KeyBinding::for_action_in(
                                 &CycleThinkingEffort,
                                 &focus_handle,
@@ -6719,7 +6730,7 @@ impl ThreadView {
             .trigger_with_tooltip(trigger, tooltip)
             .menu(move |window, cx| {
                 Some(ContextMenu::build(window, cx, |mut menu, _window, _cx| {
-                    menu = menu.header("Change Thinking Effort");
+                    menu = menu.header(t!("agent_ui.config_options.change_thinking_effort"));
 
                     for effort_level in supported_effort_levels.clone() {
                         let is_selected = selected
@@ -6802,7 +6813,7 @@ impl ThreadView {
             div()
                 .id("loading-message-content")
                 .px_1()
-                .tooltip(Tooltip::text("Loading Added Context…"))
+                .tooltip(Tooltip::text(t!("agent_ui.thread_view.loading_added_context")))
                 .child(loading_contents_spinner(IconSize::default()))
                 .into_any_element()
         } else if (is_generating || is_unconfirmed) && is_editor_empty {
@@ -6812,9 +6823,9 @@ impl ThreadView {
                 .tooltip(move |_window, cx| {
                     Tooltip::for_action(
                         if is_unconfirmed {
-                            "Request Stop (Activity Unconfirmed)"
+                            t!("agent_ui.thread_view.stop_generation_activity_unconfirmed")
                         } else {
-                            "Stop Generation"
+                            t!("agent_ui.thread_view.stop_generation")
                         },
                         &editor::actions::Cancel,
                         cx,
@@ -6850,7 +6861,7 @@ impl ThreadView {
                                     h_flex()
                                         .gap_2()
                                         .justify_between()
-                                        .child(Label::new("Queue and Send"))
+                                        .child(Label::new(t!("agent_ui.thread_view.queue_and_send")))
                                         .child(KeyBinding::for_action_in(&Chat, &focus_handle, cx)),
                                 )
                                 .child(
@@ -6860,7 +6871,7 @@ impl ThreadView {
                                         .justify_between()
                                         .border_t_1()
                                         .border_color(cx.theme().colors().border_variant)
-                                        .child(Label::new("Send Immediately"))
+                                        .child(Label::new(t!("agent_ui.thread_view.send_immediately")))
                                         .child(KeyBinding::for_action_in(
                                             &SendImmediately,
                                             &focus_handle,
@@ -6892,7 +6903,7 @@ impl ThreadView {
                 {
                     move |_window, cx| {
                         Tooltip::for_action_in(
-                            "Add Context",
+                            t!("agent_ui.inline_prompt_editor.add_context"),
                             &OpenAddContextMenu,
                             &focus_handle,
                             cx,
@@ -6949,7 +6960,7 @@ impl ThreadView {
         ContextMenu::build(window, cx, move |menu, _window, _cx| {
             menu.key_context("AddContextMenu")
                 .item(
-                    ContextMenuEntry::new("Files & Directories")
+                    ContextMenuEntry::new(t!("agent_ui.thread_view.files_and_directories"))
                         .icon(IconName::File)
                         .icon_color(Color::Muted)
                         .icon_size(IconSize::XSmall)
@@ -6964,7 +6975,7 @@ impl ThreadView {
                         }),
                 )
                 .item(
-                    ContextMenuEntry::new("Symbols")
+                    ContextMenuEntry::new(t!("agent_ui.thread_view.symbols"))
                         .icon(IconName::Code)
                         .icon_color(Color::Muted)
                         .icon_size(IconSize::XSmall)
@@ -6979,7 +6990,7 @@ impl ThreadView {
                         }),
                 )
                 .item(
-                    ContextMenuEntry::new("Threads")
+                    ContextMenuEntry::new(t!("agent_ui.thread_view.threads"))
                         .icon(IconName::Thread)
                         .icon_color(Color::Muted)
                         .icon_size(IconSize::XSmall)
@@ -7007,7 +7018,7 @@ impl ThreadView {
                     })
                 })
                 .item(
-                    ContextMenuEntry::new("Image")
+                    ContextMenuEntry::new(t!("agent_ui.message_editor.image"))
                         .icon(IconName::Image)
                         .icon_color(Color::Muted)
                         .icon_size(IconSize::XSmall)
@@ -7023,7 +7034,7 @@ impl ThreadView {
                         }),
                 )
                 .item(
-                    ContextMenuEntry::new("Selection")
+                    ContextMenuEntry::new(t!("agent_ui.thread_view.selection"))
                         .icon(IconName::CursorIBeam)
                         .icon_color(Color::Muted)
                         .icon_size(IconSize::XSmall)
@@ -7038,7 +7049,7 @@ impl ThreadView {
                         }),
                 )
                 .item(
-                    ContextMenuEntry::new("Branch Diff")
+                    ContextMenuEntry::new(t!("agent_ui.thread_view.branch_diff"))
                         .icon(IconName::GitBranch)
                         .icon_color(Color::Muted)
                         .icon_size(IconSize::XSmall)
@@ -7102,7 +7113,7 @@ impl ThreadView {
                     Tooltip::with_meta(
                         tooltip_label.clone(),
                         Some(&Follow),
-                        "Track the agent's location as it reads and edits files.",
+                        t!("agent_ui.thread_view.follow_meta"),
                         cx,
                     )
                 }
@@ -7148,9 +7159,9 @@ impl Render for ResponseSpeedTooltip {
                         .gap_4()
                         .justify_between()
                         .child(Label::new(if enabled {
-                            "Disable Fast Mode"
+                            t!("agent_ui.thread_view.disable_fast_mode")
                         } else {
-                            "Enable Fast Mode"
+                            t!("agent_ui.thread_view.enable_fast_mode")
                         }))
                         .child(KeyBinding::for_action_in(&ToggleFastMode, &self.focus, cx)),
                 )
@@ -7196,7 +7207,7 @@ impl Render for TokenUsageTooltip {
             container
                 .min_w_40()
                 .child(
-                    Label::new("Context")
+                    Label::new(t!("agent_ui.agent_panel.context"))
                         .color(Color::Muted)
                         .size(LabelSize::Small),
                 )
@@ -7218,7 +7229,7 @@ impl Render for TokenUsageTooltip {
                             .child(
                                 h_flex()
                                     .gap_0p5()
-                                    .child(Label::new("Input:").color(Color::Muted).mr_0p5())
+                                    .child(Label::new(t!("agent_ui.thread_view.input")).color(Color::Muted).mr_0p5())
                                     .child(Label::new(input_tokens))
                                     .child(Label::new("/").color(separator_color))
                                     .child(Label::new(input_max).color(Color::Muted)),
@@ -7226,7 +7237,7 @@ impl Render for TokenUsageTooltip {
                             .child(
                                 h_flex()
                                     .gap_0p5()
-                                    .child(Label::new("Output:").color(Color::Muted).mr_0p5())
+                                    .child(Label::new(t!("agent_ui.thread_view.output")).color(Color::Muted).mr_0p5())
                                     .child(Label::new(output_tokens))
                                     .child(Label::new("/").color(separator_color))
                                     .child(Label::new(output_max).color(Color::Muted)),
@@ -7242,7 +7253,7 @@ impl Render for TokenUsageTooltip {
                             .border_t_1()
                             .border_color(cx.theme().colors().border_variant)
                             .child(
-                                Label::new("Cost")
+                                Label::new(t!("agent_ui.thread_view.cost"))
                                     .color(Color::Muted)
                                     .size(LabelSize::Small),
                             )
@@ -7261,7 +7272,7 @@ impl Render for TokenUsageTooltip {
                                 .border_t_1()
                                 .border_color(cx.theme().colors().border_variant)
                                 .child(
-                                    Label::new("Rules")
+                                    Label::new(t!("agent_ui.thread_view.rules"))
                                         .color(Color::Muted)
                                         .size(LabelSize::Small),
                                 )
@@ -7448,19 +7459,23 @@ fn augment_settings_sandbox_policy(
     }
 }
 
-fn sandbox_section(title: &str, policy: &SandboxPolicyDisplay, show_empty: bool) -> SandboxSection {
+fn sandbox_section(
+    title: impl Into<String>,
+    policy: &SandboxPolicyDisplay,
+    show_empty: bool,
+) -> SandboxSection {
     let write_empty = fs_grants_nothing(&policy.fs);
     let network_empty = network_grants_nothing(&policy.network);
-    let mut section = SandboxSection::new(title.to_string());
+    let mut section = SandboxSection::new(title.into());
 
     if show_empty || !write_empty {
         section =
-            section.group(SandboxGroup::new("Write Access").rows(sandbox_fs_rows(&policy.fs)));
+            section.group(SandboxGroup::new(t!("agent_ui.thread_view.write_access_group")).rows(sandbox_fs_rows(&policy.fs)));
     }
 
     if show_empty || !network_empty {
         section = section
-            .group(SandboxGroup::new("Network Access").rows(sandbox_network_rows(&policy.network)));
+            .group(SandboxGroup::new(t!("agent_ui.thread_view.network_access_group")).rows(sandbox_network_rows(&policy.network)));
     }
 
     section
@@ -7491,10 +7506,10 @@ fn network_grants_nothing(network: &SandboxNetPolicy) -> bool {
 fn sandbox_fs_rows(fs: &SandboxFsDisplay) -> Vec<SandboxRow> {
     match fs {
         SandboxFsDisplay::Unrestricted => vec![SandboxRow::message(
-            "All paths except protected Git metadata",
+            t!("agent_ui.thread_view.all_paths_except_git"),
         )],
         SandboxFsDisplay::Restricted(entries) if entries.is_empty() => {
-            vec![SandboxRow::message("None")]
+            vec![SandboxRow::message(t!("agent_ui.thread_view.none"))]
         }
         SandboxFsDisplay::Restricted(entries) => entries
             .iter()
@@ -7503,7 +7518,9 @@ fn sandbox_fs_rows(fs: &SandboxFsDisplay) -> Vec<SandboxRow> {
                 WritableEntryDisplay::Path(path) => SandboxRow::path(PathBuf::from(path)),
                 #[cfg(target_os = "linux")]
                 WritableEntryDisplay::IsolatedTmp => {
-                    SandboxRow::path(PathBuf::from("/tmp (isolated)"))
+                    SandboxRow::path(PathBuf::from(
+                        t!("agent_ui.thread_view.tmp_isolated").to_string(),
+                    ))
                 }
             })
             .collect(),
@@ -7514,12 +7531,12 @@ fn sandbox_fs_rows(fs: &SandboxFsDisplay) -> Vec<SandboxRow> {
 /// one row per allowed domain.
 fn sandbox_network_rows(network: &SandboxNetPolicy) -> Vec<SandboxRow> {
     match network {
-        SandboxNetPolicy::Unrestricted => vec![SandboxRow::message("All domains (unrestricted)")],
-        SandboxNetPolicy::Blocked => vec![SandboxRow::message("None")],
+        SandboxNetPolicy::Unrestricted => vec![SandboxRow::message(t!("agent_ui.thread_view.all_domains"))],
+        SandboxNetPolicy::Blocked => vec![SandboxRow::message(t!("agent_ui.thread_view.none"))],
         SandboxNetPolicy::Restricted {
             allowed_domains, ..
         } if allowed_domains.is_empty() => {
-            vec![SandboxRow::message("None")]
+            vec![SandboxRow::message(t!("agent_ui.thread_view.none"))]
         }
         SandboxNetPolicy::Restricted {
             allowed_domains, ..
@@ -7699,7 +7716,7 @@ impl ThreadView {
                                                 if is_loading_contents {
                                                     div()
                                                         .id("loading-edited-message-content")
-                                                        .tooltip(Tooltip::text("Loading Added Context…"))
+                                                        .tooltip(Tooltip::text(t!("agent_ui.thread_view.loading_added_context")))
                                                         .child(loading_contents_spinner(IconSize::XSmall))
                                                         .into_any_element()
                                                 } else {
@@ -7707,7 +7724,7 @@ impl ThreadView {
                                                         .icon_color(Color::Muted)
                                                         .icon_size(IconSize::XSmall)
                                                         .tooltip(Tooltip::text(
-                                                            "Editing will restart the thread from this point."
+                                                            t!("agent_ui.thread_view.editing_restarts_thread")
                                                         ))
                                                         .on_click(cx.listener({
                                                             let editor = editor.clone();
@@ -7733,7 +7750,7 @@ impl ThreadView {
                                                     move |_, _| {
                                                         v_flex()
                                                             .gap_1()
-                                                            .child(Label::new("Unavailable Editing"))
+                                                            .child(Label::new(t!("agent_ui.thread_view.unavailable_editing")))
                                                             .child(
                                                                 div().max_w_64().child(
                                                                     Label::new(if source_is_representable {
@@ -7742,7 +7759,7 @@ impl ThreadView {
                                                                             agent_name
                                                                         )
                                                                     } else {
-                                                                        "This message contains unsupported content and cannot be edited or resent.".to_string()
+                                                                        t!("agent_ui.thread_view.editing_unsupported_content").to_string()
                                                                     })
                                                                     .size(LabelSize::Small)
                                                                     .color(Color::Muted),
@@ -7932,13 +7949,13 @@ impl ThreadView {
                                         .size(IconSize::Small),
                                 )
                                 .child(
-                                    Label::new("Subagent Output")
+                                    Label::new(t!("agent_ui.thread_view.subagent_output"))
                                         .size(LabelSize::Custom(self.tool_name_font_size()))
                                         .color(Color::Muted),
                                 ),
                         )
                         .child(Divider::horizontal())
-                        .tooltip(Tooltip::text("Everything below this line was sent as output from this subagent to the main agent.")),
+                        .tooltip(Tooltip::text(t!("agent_ui.thread_view.subagent_output_tooltip"))),
                 )
                 .child(primary)
                 .into_any_element()
@@ -8247,7 +8264,7 @@ impl ThreadView {
                     let thread = thread.clone();
                     CopyButton::new(("copy_agent_response", entry_ix), "")
                         .icon_size(IconSize::Small)
-                        .tooltip_label("Copy This Agent Response")
+                        .tooltip_label(t!("agent_ui.thread_view.copy_agent_response"))
                         .custom_on_click(move |_, cx| {
                             let entries = thread.read(cx).entries();
                             if let Some(text) =
@@ -8265,7 +8282,7 @@ impl ThreadView {
         )
         .icon_size(IconSize::Small)
         .icon_color(Color::Muted)
-        .tooltip(Tooltip::text("Scroll to User Message"))
+        .tooltip(Tooltip::text(t!("agent_ui.thread_view.scroll_to_user_message")))
         .on_click(cx.listener(move |this, _, _, cx| {
             this.scroll_to_user_message_index(user_message_index, cx);
         }));
@@ -8274,7 +8291,7 @@ impl ThreadView {
             IconButton::new(("scroll_to_top", entry_ix), IconName::ArrowUp)
                 .icon_size(IconSize::Small)
                 .icon_color(Color::Muted)
-                .tooltip(Tooltip::text("Scroll to Top"))
+                .tooltip(Tooltip::text(t!("agent_ui.thread_view.scroll_to_top")))
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.scroll_to_top(cx);
                 }))
@@ -8314,7 +8331,7 @@ impl ThreadView {
                 (self.is_subagent() && self.is_thread_feedback_enabled(cx)).then(|| {
                     let feedback = self.thread_feedback.feedback;
                     let tooltip_meta =
-                        "Rating the thread sends all of your current conversation to the Zed team.";
+                        t!("agent_ui.thread_view.rating_meta");
 
                     h_flex()
                         .child(
@@ -8324,16 +8341,19 @@ impl ThreadView {
                                     Some(ThreadFeedback::Positive) => Color::Accent,
                                     _ => Color::Muted,
                                 })
-                                .tooltip(move |window, cx| match feedback {
+                                .tooltip({
+                                    let tooltip_meta = tooltip_meta.clone();
+                                    move |window, cx| match feedback {
                                     Some(ThreadFeedback::Positive) => {
-                                        Tooltip::text("Thanks for your feedback!")(window, cx)
+                                        Tooltip::text(t!("agent_ui.thread_view.thanks_feedback"))(window, cx)
                                     }
                                     _ => Tooltip::with_meta(
-                                        "Helpful Response",
+                                        t!("agent_ui.thread_view.helpful_response"),
                                         None,
-                                        tooltip_meta,
+                                        tooltip_meta.clone(),
                                         cx,
                                     ),
+                                    }
                                 })
                                 .on_click(cx.listener(move |this, _, window, cx| {
                                     this.handle_feedback_click(ThreadFeedback::Positive, window, cx);
@@ -8346,18 +8366,21 @@ impl ThreadView {
                                     Some(ThreadFeedback::Negative) => Color::Accent,
                                     _ => Color::Muted,
                                 })
-                                .tooltip(move |window, cx| match feedback {
+                                .tooltip({
+                                    let tooltip_meta = tooltip_meta.clone();
+                                    move |window, cx| match feedback {
                                     Some(ThreadFeedback::Negative) => Tooltip::text(
                                         "We appreciate your feedback and will use it to improve in the future.",
                                     )(
                                         window, cx
                                     ),
                                     _ => Tooltip::with_meta(
-                                        "Not Helpful Response",
+                                        t!("agent_ui.thread_view.not_helpful_response"),
                                         None,
-                                        tooltip_meta,
+                                        tooltip_meta.clone(),
                                         cx,
                                     ),
+                                    }
                                 })
                                 .on_click(cx.listener(move |this, _, window, cx| {
                                     this.handle_feedback_click(ThreadFeedback::Negative, window, cx);
@@ -8827,7 +8850,7 @@ impl ThreadView {
                     )
                     .child(
                         div().min_w(rems(8.)).child(
-                            LoadingLabel::new("Awaiting Confirmation")
+                            LoadingLabel::new(t!("agent_ui.thread_view.awaiting_confirmation"))
                                 .size(LabelSize::Small)
                                 .color(Color::Muted)
                                 .single_line(),
@@ -8988,7 +9011,7 @@ impl ThreadView {
                                 div()
                                     .text_size(self.tool_name_font_size())
                                     .text_color(cx.theme().colors().text_muted)
-                                    .child("Thinking"),
+                                    .child(t!("agent_ui.thread_view.thinking")),
                             ),
                     )
                     .child(
@@ -9071,7 +9094,7 @@ impl ThreadView {
                         .and_then(|markdown| markdown.context_menu_selected_markdown().cloned());
 
                     let copy_this_agent_response =
-                        ContextMenuEntry::new("Copy This Agent Response").handler({
+                        ContextMenuEntry::new(t!("agent_ui.thread_view.copy_agent_response")).handler({
                             let entity = entity.clone();
                             move |_, cx| {
                                 entity.update(cx, |this, cx| {
@@ -9086,7 +9109,7 @@ impl ThreadView {
                         });
 
                     let scroll_item = if is_at_top {
-                        ContextMenuEntry::new("Scroll to Bottom").handler({
+                        ContextMenuEntry::new(t!("agent_ui.thread_view.scroll_to_bottom")).handler({
                             let entity = entity.clone();
                             move |_, cx| {
                                 entity.update(cx, |this, cx| {
@@ -9095,7 +9118,7 @@ impl ThreadView {
                             }
                         })
                     } else {
-                        ContextMenuEntry::new("Scroll to Top").handler({
+                        ContextMenuEntry::new(t!("agent_ui.thread_view.scroll_to_top")).handler({
                             let entity = entity.clone();
                             move |_, cx| {
                                 entity.update(cx, |this, cx| {
@@ -9105,7 +9128,7 @@ impl ThreadView {
                         })
                     };
 
-                    let open_thread_as_markdown = ContextMenuEntry::new("Open Thread as Markdown")
+                    let open_thread_as_markdown = ContextMenuEntry::new(t!("agent_ui.agent_panel.open_thread_as_markdown"))
                         .handler({
                             let entity = entity.clone();
                             let workspace = workspace.clone();
@@ -9122,13 +9145,13 @@ impl ThreadView {
 
                     menu.when_some(focus, |menu, focus| menu.context(focus))
                         .when_some(context_menu_link, |menu, url| {
-                            menu.entry("Copy Link", None, move |_, cx| {
+                            menu.entry(t!("agent_ui.thread_view.copy_link"), None, move |_, cx| {
                                 cx.write_to_clipboard(ClipboardItem::new_string(url.to_string()));
                             })
                             .separator()
                         })
                         .when_some(selected_text, |menu, selected_text| {
-                            menu.entry("Copy", Some(Box::new(markdown::Copy)), move |_, cx| {
+                            menu.entry(t!("agent_ui.message_editor.copy"), Some(Box::new(markdown::Copy)), move |_, cx| {
                                 cx.write_to_clipboard(ClipboardItem::new_string(
                                     selected_text.to_string(),
                                 ));
@@ -9136,7 +9159,7 @@ impl ThreadView {
                         })
                         .when_some(selected_markdown, |menu, selected_markdown| {
                             menu.entry(
-                                "Copy as Markdown",
+                                t!("agent_ui.thread_view.copy_as_markdown"),
                                 Some(Box::new(markdown::CopyAsMarkdown)),
                                 move |_, cx| {
                                     cx.write_to_clipboard(ClipboardItem::new_string(
@@ -9283,7 +9306,7 @@ impl ThreadView {
                     .child(
                         Button::new(("session-message-participant", entry_ix), label)
                             .label_size(LabelSize::Small)
-                            .tooltip(Tooltip::text("Open Session"))
+                            .tooltip(Tooltip::text(t!("agent_ui.thread_view.open_session")))
                             .on_click(cx.listener({
                                 let session_id = session_id.clone();
                                 move |this, _, window, cx| {
@@ -9298,7 +9321,7 @@ impl ThreadView {
                     )
                     .into_any_element(),
                 // The RFD allows messages naming a session this conversation never learned about.
-                None => Label::new("Unavailable Session")
+                None => Label::new(t!("agent_ui.thread_view.unavailable_session"))
                     .size(LabelSize::Small)
                     .color(Color::Muted)
                     .into_any_element(),
@@ -9411,7 +9434,7 @@ impl ThreadView {
         let conversation = self.conversation.read(cx);
         let thread = conversation.thread(session_id)?.read(cx);
         Some(if thread.parent_session_id().is_none() {
-            "Main Agent".into()
+            t!("agent_ui.thread_view.main_agent").into()
         } else {
             subagent_label(thread)
         })
@@ -9449,7 +9472,7 @@ impl ThreadView {
         let run_command_label = if is_preview {
             Some(
                 h_flex().h_6().child(
-                    Label::new("Run Command")
+                    Label::new(t!("agent_ui.thread_view.run_command"))
                         .buffer_font(cx)
                         .size(LabelSize::XSmall)
                         .color(Color::Muted),
@@ -9470,7 +9493,7 @@ impl ThreadView {
             });
         let copy_button_id = SharedString::from(format!("{group}-copy-command"));
         let copy_button = CopyButton::new(copy_button_id, command_text)
-            .tooltip_label("Copy Command")
+            .tooltip_label(t!("agent_ui.thread_view.copy_command"))
             .visible_on_hover(group.clone());
 
         v_flex()
@@ -9575,7 +9598,7 @@ impl ThreadView {
                     )
                 }
             } else {
-                "Output was truncated".to_string()
+                t!("agent_ui.thread_view.output_was_truncated").to_string()
             }
         });
 
@@ -9712,7 +9735,7 @@ impl ThreadView {
         let (title, detail, docs_section): (SharedString, SharedString, Option<&'static str>) =
             match reason {
                 SandboxNotAppliedReason::ErrorLinuxWsl(error) => (
-                    "Couldn't create a sandbox".into(),
+                    t!("agent_ui.thread_view.couldnt_create_sandbox").into(),
                     error.user_facing_message().into(),
                     Some(error.docs_section()),
                 ),
@@ -9729,10 +9752,10 @@ impl ThreadView {
                             ))
                         })
                         .unwrap_or_else(|| {
-                            "Unsandboxed execution is allowed for the rest of this thread.".into()
+                            t!("agent_ui.thread_view.unsandboxed_allowed_for_thread").into()
                         });
                     let docs_section = thread_error.as_ref().map(|error| error.docs_section());
-                    ("Ran without sandbox".into(), detail, docs_section)
+                    (t!("agent_ui.thread_view.ran_without_sandbox").into(), detail, docs_section)
                 }
             };
 
@@ -9973,9 +9996,9 @@ impl ThreadView {
                                 self.expanded_tool_call_raw_inputs.contains(&tool_call.id);
 
                             let input_header = if is_raw_input_expanded {
-                                "Raw Input:"
+                                t!("agent_ui.thread_view.raw_input")
                             } else {
-                                "View Raw Input"
+                                t!("agent_ui.thread_view.view_raw_input")
                             };
 
                             this.child(
@@ -10061,7 +10084,7 @@ impl ThreadView {
                                 .gap_1()
                                 .border_l_1()
                                 .border_color(self.tool_card_border_color(cx))
-                                .child(input_output_header("Raw Input:".into()))
+                                .child(input_output_header(t!("agent_ui.thread_view.raw_input").into()))
                                 .children(tool_call.raw_input_markdown.clone().map(|input| {
                                     div().id(("tool-call-raw-input-markdown", entry_ix)).child(
                                         self.render_markdown(
@@ -10071,7 +10094,7 @@ impl ThreadView {
                                         ),
                                     )
                                 }))
-                                .child(input_output_header("Output:".into())),
+                                .child(input_output_header(t!("agent_ui.thread_view.output").into())),
                         )
                     })
                     .children(tool_call.content().iter().enumerate().map(
@@ -10240,7 +10263,7 @@ impl ThreadView {
                                                             div()
                                                                 .id(entry_ix)
                                                                 .tooltip(Tooltip::text(
-                                                                    "Interrupted Edit",
+                                                                    t!("agent_ui.thread_view.interrupted_edit"),
                                                                 ))
                                                                 .child(
                                                                     Icon::new(IconName::XCircle)
@@ -10273,9 +10296,9 @@ impl ThreadView {
                                                             .icon_size(IconSize::Small)
                                                             .tooltip(move |_, cx| {
                                                                 Tooltip::with_meta(
-                                                                    "Discard Interrupted Edit",
+                                                                    t!("agent_ui.thread_view.discard_interrupted_edit"),
                                                                     None,
-                                                                    "You can discard this interrupted partial edit and restore the original file content.",
+                                                                    t!("agent_ui.thread_view.discard_interrupted_edit_meta"),
                                                                     cx,
                                                                 )
                                                             })
@@ -10336,7 +10359,7 @@ impl ThreadView {
                                     })
                                     .when(tool_call_output_focus, |this| {
                                         this.child(
-                                            Button::new("open-file-button", "Open File")
+                                            Button::new("open-file-button", t!("agent_ui.thread_view.open_file"))
                                                 .style(ButtonStyle::Outlined)
                                                 .label_size(LabelSize::Small)
                                                 .key_binding(
@@ -10513,7 +10536,7 @@ impl ThreadView {
                             h_flex()
                                 .gap_1()
                                 .child(
-                                    Label::new("Network access")
+                                    Label::new(t!("agent_ui.thread_view.network_access"))
                                         .size(LabelSize::Small)
                                         .color(Color::Muted),
                                 )
@@ -10611,7 +10634,7 @@ impl ThreadView {
                             h_flex()
                                 .gap_1()
                                 .child(
-                                    Label::new("Write Access")
+                                    Label::new(t!("agent_ui.thread_view.write_access_group"))
                                         .size(LabelSize::Small)
                                         .color(Color::Muted),
                                 )
@@ -10657,7 +10680,7 @@ impl ThreadView {
                         .size(IconSize::Small),
                 )
                 .child(
-                    Label::new("Runs without the OS sandbox")
+                    Label::new(t!("agent_ui.thread_view.runs_without_os_sandbox"))
                         .size(LabelSize::Small)
                         .color(Color::Muted),
                 )
@@ -10841,7 +10864,7 @@ impl ThreadView {
                         IconButton::new("configure-confusable-warning", IconName::Settings)
                             .icon_size(IconSize::Small)
                             .icon_color(Color::Muted)
-                            .tooltip(Tooltip::text("Configure unicode confusables warning"))
+                            .tooltip(Tooltip::text(t!("agent_ui.thread_view.configure_confusables_warning")))
                             .on_click(|_, window, cx| {
                                 window.dispatch_action(
                                     Box::new(zed_actions::OpenSettingsAt {
@@ -10919,7 +10942,7 @@ impl ThreadView {
                             .flex_1()
                             .gap_0p5()
                             .child(
-                                Label::new("This command can write to a file on a Windows drive")
+                                Label::new(t!("agent_ui.thread_view.windows_drive_write_warning"))
                                     .size(LabelSize::Small)
                                     .color(Color::Warning),
                             )
@@ -10941,7 +10964,7 @@ impl ThreadView {
                         IconButton::new("configure-ntfs-warning", IconName::Settings)
                             .icon_size(IconSize::Small)
                             .icon_color(Color::Muted)
-                            .tooltip(Tooltip::text("Configure Windows-drive warning"))
+                            .tooltip(Tooltip::text(t!("agent_ui.thread_view.configure_windows_drive_warning")))
                             .on_click(|_, window, cx| {
                                 window.dispatch_action(
                                     Box::new(zed_actions::OpenSettingsAt {
@@ -10962,7 +10985,7 @@ impl ThreadView {
                         ToggleState::Selected
                     },
                 )
-                .label("Don't show this warning again")
+                .label(t!("agent_ui.thread_view.dont_show_this_warning_again"))
                 .label_size(LabelSize::Small)
                 .on_click(cx.listener(|this, state: &ToggleState, _window, cx| {
                     let disable = *state == ToggleState::Selected;
@@ -11009,7 +11032,7 @@ impl ThreadView {
                     .min_w_0()
                     .gap_0p5()
                     .child(
-                        Label::new("Couldn't create a sandbox")
+                        Label::new(t!("agent_ui.thread_view.couldnt_create_sandbox"))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     )
@@ -11070,7 +11093,7 @@ impl ThreadView {
             .bg(cx.theme().colors().editor_background)
             .map(|this| {
                 if is_redirected {
-                    this.child(captioned_path("Source".into(), requested_display, cx))
+                    this.child(captioned_path(t!("keymap_editor.editor.source_label").into(), requested_display, cx))
                         .child(
                             Icon::new(IconName::ArrowDown)
                                 .color(Color::Muted)
@@ -11170,13 +11193,13 @@ impl ThreadView {
 
         let dropdown_label: SharedString =
             if matches!(selection, Some(PermissionSelection::SelectedPatterns(_))) {
-                "Always for selected commands".into()
+                t!("agent_ui.thread_view.always_for_selected_commands").into()
             } else {
                 choices
                     .get(selected_index)
                     .or(choices.last())
                     .map(|choice| choice.label())
-                    .unwrap_or_else(|| "Only this time".into())
+                    .unwrap_or_else(|| t!("agent_ui.thread_view.only_this_time").into())
             };
         let permission_buttons_selector = {
             let session_id = session_id.clone();
@@ -11222,7 +11245,7 @@ impl ThreadView {
                 h_flex()
                     .gap_0p5()
                     .child(
-                        Button::new(("allow-btn", entry_ix), "Allow")
+                        Button::new(("allow-btn", entry_ix), t!("agent_ui.thread_view.allow"))
                             .disabled(allow_disabled)
                             .start_icon(
                                 Icon::new(IconName::Check)
@@ -11254,7 +11277,7 @@ impl ThreadView {
                             })),
                     )
                     .child(
-                        Button::new(("deny-btn", entry_ix), "Deny")
+                        Button::new(("deny-btn", entry_ix), t!("settings_ui.tool_permissions_setup.mode_deny"))
                             .start_icon(
                                 Icon::new(IconName::Close)
                                     .size(IconSize::XSmall)
@@ -11478,7 +11501,7 @@ impl ThreadView {
                             );
                         }
 
-                        menu = menu.separator().header("Select Options…");
+                        menu = menu.separator().header(t!("agent_ui.thread_view.select_options"));
 
                         for (pattern_index, label) in patterns.iter() {
                             let label = label.clone();
@@ -11518,7 +11541,7 @@ impl ThreadView {
                                 .py_1()
                                 .w_full()
                                 .child(
-                                    Button::new("apply-patterns", "Apply")
+                                    Button::new("apply-patterns", t!("agent_ui.thread_view.apply"))
                                         .full_width()
                                         .style(ButtonStyle::Outlined)
                                         .label_size(LabelSize::Small)
@@ -11708,7 +11731,7 @@ impl ThreadView {
         match (tool_name, interrupted_edit) {
             (Some(name), true) => Some(format!("Interrupted Edit\nTool: {name}").into()),
             (Some(name), false) => Some(format!("Tool: {name}").into()),
-            (None, true) => Some("Interrupted Edit".into()),
+            (None, true) => Some(t!("agent_ui.thread_view.interrupted_edit").into()),
             (None, false) => None,
         }
     }
@@ -11855,7 +11878,7 @@ impl ThreadView {
                             cx,
                         ),
                     )
-                    .tooltip(Tooltip::text("Go to File"))
+                    .tooltip(Tooltip::text(t!("agent_ui.thread_view.go_to_file")))
                     .on_click(cx.listener(move |this, _, window, cx| {
                         this.open_tool_call_location(entry_ix, 0, window, cx);
                     }))
@@ -12078,7 +12101,7 @@ impl ThreadView {
                 .child(
                     Button::new(SharedString::from(element_id), label)
                         .label_size(LabelSize::Small)
-                        .tooltip(Tooltip::text("Open Session"))
+                        .tooltip(Tooltip::text(t!("agent_ui.thread_view.open_session")))
                         .on_click(cx.listener({
                             let session_id = reference.session_id.clone();
                             move |this, _, window, cx| {
@@ -12094,7 +12117,7 @@ impl ThreadView {
                 .into_any_element(),
             // The reference is display-only, so a session this conversation has no thread for
             // is shown rather than loaded.
-            None => Label::new("Unavailable Session")
+            None => Label::new(t!("agent_ui.thread_view.unavailable_session"))
                 .size(LabelSize::Small)
                 .color(Color::Muted)
                 .into_any_element(),
@@ -12413,7 +12436,7 @@ impl ThreadView {
             .when_some(location, |this, _loc| {
                 this.child(
                     h_flex().w_full().justify_end().child(
-                        Button::new(("go-to-file", entry_ix), "Go to File")
+                        Button::new(("go-to-file", entry_ix), t!("agent_ui.thread_view.go_to_file"))
                             .label_size(LabelSize::Small)
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 this.open_tool_call_location(entry_ix, 0, window, cx);
@@ -12535,7 +12558,7 @@ impl ThreadView {
                         .child(Icon::new(IconName::Circle).size(IconSize::Small).color(
                             Color::Custom(cx.theme().colors().icon_disabled.opacity(0.5)),
                         ))
-                        .tooltip(Tooltip::text("Subagent Cancelled"))
+                        .tooltip(Tooltip::text(t!("agent_ui.thread_view.subagent_cancelled")))
                         .into_any_element()
                 }
                 SubagentStatus::Failed => div()
@@ -12545,7 +12568,7 @@ impl ThreadView {
                             .size(IconSize::Small)
                             .color(Color::Error),
                     )
-                    .tooltip(Tooltip::text("Subagent Failed"))
+                    .tooltip(Tooltip::text(t!("agent_ui.thread_view.subagent_failed")))
                     .into_any_element(),
                 SubagentStatus::Completed => Icon::new(IconName::Check)
                     .size(IconSize::Small)
@@ -12558,7 +12581,7 @@ impl ThreadView {
                             .size(IconSize::Small)
                             .color(Color::Muted),
                     )
-                    .tooltip(Tooltip::text("Subagent Status Unknown"))
+                    .tooltip(Tooltip::text(t!("agent_ui.thread_view.subagent_status_unknown")))
                     .into_any_element(),
             });
 
@@ -12567,9 +12590,9 @@ impl ThreadView {
             .map_or(false, |thread| !thread.read(cx).entries().is_empty());
 
         let tooltip_meta_description = if is_expanded {
-            "Click to Collapse"
+            t!("agent_ui.thread_view.click_to_collapse")
         } else {
-            "Click to Preview"
+            t!("agent_ui.thread_view.click_to_preview")
         };
 
         let error_message = state.error.clone();
@@ -12670,7 +12693,7 @@ impl ThreadView {
                                     Tooltip::with_meta(
                                         title.to_string(),
                                         None,
-                                        tooltip_meta_description,
+                                        tooltip_meta_description.clone(),
                                         cx,
                                     )
                                 })
@@ -12713,7 +12736,7 @@ impl ThreadView {
                                     )
                                     .icon_size(IconSize::Small)
                                     .icon_color(Color::Error)
-                                    .tooltip(Tooltip::text("Stop Subagent"))
+                                    .tooltip(Tooltip::text(t!("agent_ui.thread_view.stop_subagent")))
                                     .when_some(
                                         thread_view
                                             .as_ref()
@@ -12759,7 +12782,7 @@ impl ThreadView {
                             .color(Color::Muted)
                             .size(IconSize::Small),
                     )
-                    .tooltip(Tooltip::text("Make Subagent Full Screen"))
+                    .tooltip(Tooltip::text(t!("agent_ui.thread_view.make_subagent_full_screen")))
                     .on_click(cx.listener(move |this, _event, window, cx| {
                         telemetry::event!("Subagent Maximized");
                         this.server_view
@@ -12951,7 +12974,7 @@ impl ThreadView {
             }
             ThreadError::ZedPaymentRequired => self.render_zed_payment_required_error(cx),
             ThreadError::RateLimitExceeded { provider } => self.render_error_callout(
-                "Rate Limit Reached",
+                t!("agent_ui.thread_view.rate_limit_reached"),
                 format!(
                     "{provider}'s rate limit was reached. Zed will retry automatically. \
                     You can also wait a moment and try again."
@@ -12962,7 +12985,7 @@ impl ThreadView {
                 cx,
             ),
             ThreadError::ServerOverloaded { provider } => self.render_error_callout(
-                "Provider Unavailable",
+                t!("agent_ui.thread_view.provider_unavailable"),
                 format!(
                     "{provider}'s servers are temporarily unavailable. Zed will retry \
                     automatically. If the problem persists, check the provider's status page."
@@ -12979,10 +13002,10 @@ impl ThreadView {
                     .unwrap_or_else(|| {
                         format!("No credentials are configured for {provider}.").into()
                     });
-                self.render_error_callout("Credentials Missing", message, false, true, cx)
+                self.render_error_callout(t!("agent_ui.thread_view.credentials_missing"), message, false, true, cx)
             }
             ThreadError::StreamError { provider } => self.render_error_callout(
-                "Connection Interrupted",
+                t!("agent_ui.thread_view.connection_interrupted"),
                 format!(
                     "The connection to {provider}'s API was interrupted. Zed will retry \
                     automatically. If the problem persists, check your network connection."
@@ -12996,7 +13019,7 @@ impl ThreadView {
                 let message = Self::provider_by_name(provider, cx)
                     .map(|provider| provider.authentication_error_message())
                     .unwrap_or_else(|| format!("Could not authenticate with {provider}.").into());
-                self.render_error_callout("Authentication Failed", message, false, false, cx)
+                self.render_error_callout(t!("agent_ui.thread_view.authentication_failed"), message, false, false, cx)
             }
             ThreadError::PermissionDenied { provider, message } => {
                 let message: SharedString = message.clone().unwrap_or_else(|| {
@@ -13004,13 +13027,13 @@ impl ThreadView {
                         .into()
                 });
 
-                self.render_error_callout("Permission Denied", message, false, false, cx)
+                self.render_error_callout(t!("agent_ui.thread_view.permission_denied"), message, false, false, cx)
             }
             ThreadError::ProviderRejection { message } => {
-                self.render_error_callout("Request Failed", message.clone(), true, false, cx)
+                self.render_error_callout(t!("agent_ui.thread_view.request_failed"), message.clone(), true, false, cx)
             }
             ThreadError::MaxOutputTokens => self.render_error_callout(
-                "Output Limit Reached",
+                t!("agent_ui.thread_view.output_limit_reached"),
                 "The model stopped because it reached its maximum output length. \
                 You can ask it to continue where it left off."
                     .into(),
@@ -13022,15 +13045,15 @@ impl ThreadView {
                 .render_model_not_available_error(cx)
                 .unwrap_or_else(|| {
                     self.render_error_callout(
-                        "No Model Selected",
-                        "Select a model from the model picker below to get started.".into(),
+                        t!("agent_ui.thread_view.no_model_selected"),
+                        t!("agent_ui.thread_view.no_model_selected_message").into(),
                         false,
                         false,
                         cx,
                     )
                 }),
             ThreadError::ApiError { provider } => self.render_error_callout(
-                "API Error",
+                t!("agent_ui.thread_view.api_error"),
                 format!(
                     "{provider}'s API returned an unexpected error. \
                     If the problem persists, try switching models or restarting Zed."
@@ -13056,7 +13079,7 @@ impl ThreadView {
 
         Callout::new()
             .severity(Severity::Error)
-            .title("Request Refused")
+            .title(t!("agent_ui.thread_view.request_refused"))
             .icon(IconName::XCircle)
             .description(refusal_message.clone())
             .actions_slot(self.create_copy_button(&refusal_message))
@@ -13070,7 +13093,7 @@ impl ThreadView {
     ) -> Callout {
         Callout::new()
             .severity(Severity::Error)
-            .title("Authentication Required")
+            .title(t!("agent_ui.thread_view.authentication_required"))
             .icon(IconName::XCircle)
             .description(error.clone())
             .actions_slot(
@@ -13083,26 +13106,25 @@ impl ThreadView {
     }
 
     fn render_zed_payment_required_error(&self, cx: &mut Context<Self>) -> Callout {
-        const ERROR_MESSAGE: &str =
-            "You reached your free usage limit. Upgrade to Zed Pro for more prompts.";
+        let error_message = t!("agent_ui.thread_view.payment_required_message");
 
         Callout::new()
             .severity(Severity::Error)
             .icon(IconName::XCircle)
-            .title("Free Usage Exceeded")
-            .description(ERROR_MESSAGE)
+            .title(t!("agent_ui.thread_view.free_usage_exceeded"))
+            .description(error_message.clone())
             .actions_slot(
                 h_flex()
                     .gap_0p5()
                     .child(self.upgrade_button(cx))
-                    .child(self.create_copy_button(ERROR_MESSAGE)),
+                    .child(self.create_copy_button(error_message.clone())),
             )
             .dismiss_action(self.dismiss_error_button(cx))
     }
 
     fn render_error_callout(
         &self,
-        title: &'static str,
+        title: impl Into<SharedString>,
         message: SharedString,
         show_retry: bool,
         show_copy: bool,
@@ -13147,33 +13169,33 @@ impl ThreadView {
                             (
                                 format!("Failed to authenticate with {} provider", provider.name())
                                     .into(),
-                                "Open the settings to configure the selected provider".into(),
+                                t!("agent_ui.thread_view.model_auth_failed_description").into(),
                             )
                         } else {
                             (
                                 format!("Model {} was not found", selected_model.model.0).into(),
-                                "You may need to reconfigure authentication for this provider"
+                                t!("agent_ui.thread_view.model_not_found_description")
                                     .into(),
                             )
                         }
                     } else {
                         (
                             format!("Provider {} was not found", selected_model.provider).into(),
-                            "Open the settings to configure providers".into(),
+                            t!("agent_ui.thread_view.provider_not_found_description").into(),
                         )
                     }
                 }
                 agent::ThreadModel::Unset => {
                     if has_authenticated_provider {
                         (
-                            "No model selected".into(),
-                            "Choose a different model or configure other providers to get started"
+                            t!("agent_ui.thread_view.no_model_selected_title").into(),
+                            t!("agent_ui.thread_view.no_model_selected_with_providers")
                                 .into(),
                         )
                     } else {
                         (
-                            "No model selected".into(),
-                            "Configure a provider to get started".into(),
+                            t!("agent_ui.thread_view.no_model_selected_title").into(),
+                            t!("agent_ui.thread_view.no_model_selected_configure").into(),
                         )
                     }
                 }
@@ -13198,7 +13220,7 @@ impl ThreadView {
     }
 
     fn open_llm_providers_settings_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        Button::new("configure-llm-provider", "Configure Provider")
+        Button::new("configure-llm-provider", t!("agent_ui.thread_view.configure_provider"))
             .label_size(LabelSize::Small)
             .style(ButtonStyle::Filled)
             .on_click(cx.listener(|this, _, window, cx| {
@@ -13214,7 +13236,7 @@ impl ThreadView {
     }
 
     fn open_model_selector_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        Button::new("open-model-selector", "Select Model")
+        Button::new("open-model-selector", t!("agent_ui.thread_view.select_model"))
             .label_size(LabelSize::Small)
             .style(ButtonStyle::Filled)
             .key_binding(KeyBinding::for_action(&ToggleModelSelector, cx))
@@ -13231,7 +13253,7 @@ impl ThreadView {
         Callout::new()
             .severity(Severity::Error)
             .icon(IconName::XCircle)
-            .title("Context Too Large")
+            .title(t!("agent_ui.thread_view.context_too_large"))
             .description(MESSAGE)
             .actions_slot(
                 h_flex()
@@ -13243,7 +13265,7 @@ impl ThreadView {
     }
 
     fn retry_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        Button::new("retry", "Retry")
+        Button::new("retry", t!("agent_ui.agent_registry_ui.retry"))
             .label_size(LabelSize::Small)
             .style(ButtonStyle::Filled)
             .on_click(cx.listener(|this, _, _, cx| {
@@ -13252,7 +13274,7 @@ impl ThreadView {
     }
 
     fn new_thread_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        Button::new("new_thread", "New Thread")
+        Button::new("new_thread", t!("agent_ui.thread_view.new_thread"))
             .label_size(LabelSize::Small)
             .style(ButtonStyle::Filled)
             .on_click(cx.listener(|this, _, window, cx| {
@@ -13262,7 +13284,7 @@ impl ThreadView {
     }
 
     fn upgrade_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        Button::new("upgrade", "Upgrade")
+        Button::new("upgrade", t!("agent_ui.thread_view.upgrade"))
             .label_size(LabelSize::Small)
             .style(ButtonStyle::Tinted(ui::TintColor::Accent))
             .on_click(cx.listener({
@@ -13274,7 +13296,7 @@ impl ThreadView {
     }
 
     fn authenticate_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        Button::new("authenticate", "Authenticate")
+        Button::new("authenticate", t!("agent_ui.configure_context_server_modal.authenticate"))
             .label_size(LabelSize::Small)
             .style(ButtonStyle::Filled)
             .on_click(cx.listener({
@@ -13346,7 +13368,7 @@ impl ThreadView {
                 .clone()
                 .and_then(|selector| selector.read(cx).active_model(cx))
                 .map(|model| model.name.clone())
-                .unwrap_or_else(|| SharedString::from("The model"))
+                .unwrap_or_else(|| SharedString::from(t!("agent_ui.conversation_view.the_model_name")))
         } else {
             // ACP agent - use the agent name (e.g., "Claude Agent", "Gemini CLI")
             self.agent_id.0.clone()
@@ -13378,7 +13400,7 @@ impl ThreadView {
         Callout::new()
             .severity(Severity::Error)
             .icon(IconName::XCircle)
-            .title("An Error Happened")
+            .title(t!("agent_ui.thread_view.an_error_happened"))
             .description_slot(description)
             .actions_slot(
                 h_flex()
@@ -13387,7 +13409,7 @@ impl ThreadView {
                         this.child(
                             IconButton::new("retry", IconName::RotateCw)
                                 .icon_size(IconSize::Small)
-                                .tooltip(Tooltip::text("Retry Generation"))
+                                .tooltip(Tooltip::text(t!("agent_ui.thread_view.retry_generation")))
                                 .on_click(cx.listener(|this, _, _window, cx| {
                                     this.retry_generation(cx);
                                 })),
@@ -13423,13 +13445,13 @@ impl ThreadView {
     fn create_copy_button(&self, message: impl Into<String>) -> impl IntoElement {
         let message = message.into();
 
-        CopyButton::new("copy-error-message", message).tooltip_label("Copy Error Message")
+        CopyButton::new("copy-error-message", message).tooltip_label(t!("agent_ui.conversation_view.copy_error_message"))
     }
 
     fn dismiss_error_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
         IconButton::new("dismiss", IconName::Close)
             .icon_size(IconSize::Small)
-            .tooltip(Tooltip::text("Dismiss"))
+            .tooltip(Tooltip::text(t!("agent_ui.end_trial_upsell.dismiss")))
             .on_click(cx.listener({
                 move |this, _, _, cx| {
                     this.clear_thread_error(cx);
@@ -13438,13 +13460,13 @@ impl ThreadView {
     }
 
     fn render_resume_notice(_cx: &Context<Self>) -> AnyElement {
-        let description = "This agent does not support viewing previous messages. However, your session will still continue from where you last left off.";
+        let description = t!("agent_ui.thread_view.resumed_session_description");
 
         Callout::new()
             .border_position(CalloutBorderPosition::Bottom)
             .severity(Severity::Info)
             .icon(IconName::Info)
-            .title("Resumed Session")
+            .title(t!("agent_ui.thread_view.resumed_session"))
             .description(description)
             .into_any_element()
     }
@@ -13454,10 +13476,10 @@ impl ThreadView {
             .border_position(self.callout_border_position())
             .icon(IconName::Warning)
             .severity(Severity::Warning)
-            .title("Codex on Windows")
-            .description("For best performance, run Codex in Windows Subsystem for Linux (WSL2)")
+            .title(t!("agent_ui.thread_view.codex_on_windows"))
+            .description(t!("agent_ui.thread_view.codex_on_windows_description"))
             .actions_slot(
-                Button::new("open-wsl-modal", "Open in WSL").on_click(cx.listener({
+                Button::new("open-wsl-modal", t!("agent_ui.thread_view.open_in_wsl")).on_click(cx.listener({
                     move |_, _, _window, cx| {
                         #[cfg(windows)]
                         _window.dispatch_action(
@@ -13472,7 +13494,7 @@ impl ThreadView {
                 IconButton::new("dismiss", IconName::Close)
                     .icon_size(IconSize::Small)
                     .icon_color(Color::Muted)
-                    .tooltip(Tooltip::text("Dismiss Warning"))
+                    .tooltip(Tooltip::text(t!("agent_ui.thread_view.dismiss_warning")))
                     .on_click(cx.listener({
                         move |this, _, _, cx| {
                             this.show_codex_windows_warning = false;
@@ -13537,10 +13559,10 @@ impl ThreadView {
                 let target = issue.clone();
 
                 let title = match issue.kind {
-                    SkillLoadingIssueKind::LoadFailed => "Skill Failed to Load",
+                    SkillLoadingIssueKind::LoadFailed => t!("agent_ui.thread_view.skill_failed_to_load"),
                     SkillLoadingIssueKind::DescriptionTooLong => unreachable!(),
                     SkillLoadingIssueKind::CatalogBudgetExceeded => {
-                        "Skill Omitted from Model Catalog"
+                        t!("agent_ui.thread_view.skill_omitted_from_catalog")
                     }
                 };
 
@@ -13550,7 +13572,7 @@ impl ThreadView {
                     .title(title)
                     .description(format!("{}\n{path_label}", issue.message))
                     .actions_slot(
-                        Button::new(("open-skill-file", index), "Open Skill")
+                        Button::new(("open-skill-file", index), t!("agent_ui.thread_view.open_skill"))
                             .style(ButtonStyle::Outlined)
                             .label_size(LabelSize::Small)
                             .on_click(cx.listener(move |_, _, window, cx| {
@@ -13572,7 +13594,7 @@ impl ThreadView {
                     .dismiss_action(
                         IconButton::new(("dismiss-skill-issue", index), IconName::Close)
                             .icon_size(IconSize::Small)
-                            .tooltip(Tooltip::text("Dismiss"))
+                            .tooltip(Tooltip::text(t!("agent_ui.end_trial_upsell.dismiss")))
                             .on_click(cx.listener(move |this, _, _, cx| {
                                 this.skill_loading_issues.retain(|issue| *issue != target);
                                 this.dismissed_skill_loading_issues.insert(target.clone());
@@ -13600,7 +13622,7 @@ impl ThreadView {
 
         let warning_count = description_warnings.len();
         let title = if warning_count == 1 {
-            "1 Skill Loaded with a Long Description".to_string()
+            t!("agent_ui.thread_view.skill_long_description_single").to_string()
         } else {
             format!("{warning_count} Skills Loaded with Long Descriptions")
         };
@@ -13628,7 +13650,7 @@ impl ThreadView {
                             .child(Label::new(file_label).size(LabelSize::Small)),
                     )
                     .tooltip(move |_, cx| {
-                        Tooltip::with_meta("Open Skill", None, full_path.clone(), cx)
+                        Tooltip::with_meta(t!("agent_ui.thread_view.open_skill"), None, full_path.clone(), cx)
                     })
                     .on_click(cx.listener(move |_, _, window, cx| {
                         let abs_path = abs_path.clone();
@@ -13672,7 +13694,7 @@ impl ThreadView {
             callout.dismiss_action(
                 IconButton::new("dismiss-skill-description-warnings", IconName::Close)
                     .icon_size(IconSize::Small)
-                    .tooltip(Tooltip::text("Dismiss"))
+                    .tooltip(Tooltip::text(t!("agent_ui.end_trial_upsell.dismiss")))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.skill_loading_issues
                             .retain(|issue| !targets.contains(issue));
@@ -13690,12 +13712,12 @@ impl ThreadView {
             .border_position(self.callout_border_position())
             .icon(IconName::Warning)
             .severity(Severity::Warning)
-            .title("Review Before Sending")
-            .description("This prompt was pre-filled by an external link. Read it carefully before you submit it to the model.")
+            .title(t!("agent_ui.thread_view.review_before_sending"))
+            .description(t!("agent_ui.thread_view.review_before_sending_description"))
             .dismiss_action(
                 IconButton::new("dismiss-external-source-prompt-warning", IconName::Close)
                     .icon_size(IconSize::Small)
-                    .tooltip(Tooltip::text("Dismiss Warning"))
+                    .tooltip(Tooltip::text(t!("agent_ui.thread_view.dismiss_warning")))
                     .on_click(cx.listener({
                         move |this, _, _, cx| {
                             this.show_external_source_prompt_warning = false;
@@ -13741,7 +13763,7 @@ impl ThreadView {
             Callout::new()
                 .severity(Severity::Warning)
                 .icon(IconName::Warning)
-                .title("This agent doesn't currently support multi-root workspaces")
+                .title(t!("agent_ui.thread_view.multi_root_title"))
                 .description(format!(
                     "It currently only operates by default on \"{}\".",
                     active_dir
@@ -13750,7 +13772,7 @@ impl ThreadView {
                 .dismiss_action(
                     IconButton::new("dismiss-multi-root-callout", IconName::Close)
                         .icon_size(IconSize::Small)
-                        .tooltip(Tooltip::text("Dismiss"))
+                        .tooltip(Tooltip::text(t!("agent_ui.end_trial_upsell.dismiss")))
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.multi_root_callout_dismissed = true;
                             cx.notify();
@@ -13763,14 +13785,14 @@ impl ThreadView {
         let server_view = self.server_view.clone();
         let has_version = !version.is_empty();
         let title = if has_version {
-            "New Version Available"
+            t!("agent_ui.thread_view.new_version_available")
         } else {
-            "Agent Update Available"
+            t!("agent_ui.thread_view.agent_update_available")
         };
         let button_label = if has_version {
             format!("Update to v{}", version)
         } else {
-            "Reconnect".to_string()
+            t!("agent_ui.thread_view.reconnect").to_string()
         };
 
         v_flex().w_full().justify_end().child(
@@ -13829,16 +13851,16 @@ impl ThreadView {
             acp_thread::TokenUsageRatio::Warning => (
                 Severity::Warning,
                 IconName::Warning,
-                "Thread reaching the token limit soon",
+                t!("agent_ui.thread_view.token_limit_warning"),
             ),
             acp_thread::TokenUsageRatio::Exceeded => (
                 Severity::Error,
                 IconName::XCircle,
-                "Thread reached the token limit",
+                t!("agent_ui.thread_view.token_limit_exceeded"),
             ),
         };
 
-        let description = "To continue, run /compact or start a new thread and @-mention this one";
+        let description = t!("agent_ui.thread_view.token_limit_description");
 
         Some(
             Callout::new()
@@ -13849,7 +13871,7 @@ impl ThreadView {
                 .description(description)
                 .actions_slot(
                     h_flex().gap_0p5().child(
-                        Button::new("start-new-thread", "Start New Thread")
+                        Button::new("start-new-thread", t!("agent_ui.thread_view.start_new_thread"))
                             .label_size(LabelSize::Small)
                             .on_click(cx.listener(|this, _, window, cx| {
                                 let session_id = this.thread.read(cx).session_id().clone();
@@ -13895,12 +13917,12 @@ impl ThreadView {
                 h_flex()
                     .gap_1()
                     .child(
-                        Label::new("Anthropic will retain inference logs.")
+                        Label::new(t!("agent_ui.thread_view.data_retention_logs"))
                             .size(LabelSize::Small)
                             .color(Color::Muted),
                     )
                     .child(
-                        Button::new("data-retention-learn-more", "Learn More")
+                        Button::new("data-retention-learn-more", t!("agent_ui.agent_registry_ui.learn_more"))
                             .label_size(LabelSize::Small)
                             .on_click(|_, _, cx| {
                                 cx.open_url(DATA_RETENTION_LEARN_MORE_URL);
@@ -13923,7 +13945,7 @@ impl ThreadView {
                         )
                     })
                     .child(
-                        Button::new("accept-data-retention", "Accept")
+                        Button::new("accept-data-retention", t!("agent_ui.thread_view.accept"))
                             .label_size(LabelSize::Small)
                             .style(ButtonStyle::Tinted(TintColor::Warning))
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -14945,8 +14967,8 @@ mod tests {
                 false,
                 Some("Tool:   mcp__server__**read_file**<raw>  "),
             ),
-            (None, true, Some("Interrupted Edit")),
-            (Some(" \t\n"), true, Some("Interrupted Edit")),
+            (None, true, Some(t!("agent_ui.thread_view.interrupted_edit"))),
+            (Some(" \t\n"), true, Some(t!("agent_ui.thread_view.interrupted_edit"))),
             (
                 Some("edit_file"),
                 true,
@@ -16111,7 +16133,7 @@ mod tests {
                     connection.send_update(
                         session_id.clone(),
                         acp::SessionUpdate::ToolCall(
-                            acp::ToolCall::new(acp::ToolCallId::new(id), "Read")
+                            acp::ToolCall::new(acp::ToolCallId::new(id), t!("debugger_ui.variables.access_read"))
                                 .kind(acp::ToolKind::Read)
                                 .locations(vec![acp::ToolCallLocation::new(path).line(line)]),
                         ),

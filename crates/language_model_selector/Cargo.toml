@@ -14,6 +14,7 @@ path = "src/language_model_selector.rs"
 doctest = false
 
 [dependencies]
+zed_i18n.workspace = true
 agent_settings.workspace = true
 collections.workspace = true
 fs.workspace = true

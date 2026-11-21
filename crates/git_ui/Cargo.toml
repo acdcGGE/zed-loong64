@@ -48,6 +48,7 @@ notifications.workspace = true
 picker.workspace = true
 project.workspace = true
 prompt_store.workspace = true
+proto.workspace = true
 rand.workspace = true
 release_channel.workspace = true
 remote_connection.workspace = true
@@ -75,6 +76,8 @@ watch.workspace = true
 workspace.workspace = true
 git_ui_core.workspace = true
 zed_actions.workspace = true
+zed_i18n.workspace = true
+zeroize.workspace = true
 ztracing.workspace = true
 
 [dev-dependencies]

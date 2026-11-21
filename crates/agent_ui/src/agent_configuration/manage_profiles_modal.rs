@@ -16,6 +16,7 @@ use ui::{
     KeyBinding, ListItem, ListItemSpacing, ListSeparator, Navigable, NavigableEntry, prelude::*,
 };
 use workspace::{ModalView, Workspace};
+use zed_i18n::t;
 
 use crate::agent_configuration::manage_profiles_modal::profile_modal_header::ProfileModalHeader;
 use crate::agent_configuration::tool_picker::{ToolPicker, ToolPickerDelegate};
@@ -184,7 +185,11 @@ impl ManageProfilesModal {
     ) {
         let name_editor = cx.new(|cx| Editor::single_line(window, cx));
         name_editor.update(cx, |editor, cx| {
-            editor.set_placeholder_text("Profile name", window, cx);
+            editor.set_placeholder_text(
+                &t!("agent_ui.manage_profiles_modal.profile_name"),
+                window,
+                cx,
+            );
         });
 
         self.mode = Mode::NewProfile(NewProfileMode {
@@ -543,7 +548,7 @@ impl ManageProfilesModal {
                             h_flex()
                                 .gap_1()
                                 .child(
-                                    Label::new("Customize")
+                                    Label::new(t!("agent_ui.manage_profiles_modal.customize"))
                                         .size(LabelSize::Small)
                                         .color(Color::Muted),
                                 )
@@ -573,7 +578,10 @@ impl ManageProfilesModal {
             div()
                 .track_focus(&self.focus_handle(cx))
                 .size_full()
-                .child(ProfileModalHeader::new("Agent Profiles", None))
+                .child(ProfileModalHeader::new(
+                    t!("agent_ui.manage_profiles_modal.agent_profiles"),
+                    None,
+                ))
                 .child(
                     v_flex()
                         .pb_1()
@@ -587,9 +595,11 @@ impl ManageProfilesModal {
                             this.child(ListSeparator)
                                 .child(
                                     div().pl_2().pb_1().child(
-                                        Label::new("Custom Profiles")
-                                            .size(LabelSize::Small)
-                                            .color(Color::Muted),
+                                        Label::new(t!(
+                                            "agent_ui.manage_profiles_modal.custom_profiles"
+                                        ))
+                                        .size(LabelSize::Small)
+                                        .color(Color::Muted),
                                     ),
                                 )
                                 .children(
@@ -616,7 +626,9 @@ impl ManageProfilesModal {
                                         .inset(true)
                                         .spacing(ListItemSpacing::Sparse)
                                         .start_slot(Icon::new(IconName::Plus))
-                                        .child(Label::new("Add New Profile"))
+                                        .child(Label::new(t!(
+                                            "agent_ui.manage_profiles_modal.add_new_profile"
+                                        )))
                                         .on_click({
                                             cx.listener(move |this, _, window, cx| {
                                                 this.new_profile(None, window, cx);
@@ -653,7 +665,7 @@ impl ManageProfilesModal {
                 .profiles
                 .get(base_profile_id)
                 .map(|profile| profile.name.clone())
-                .unwrap_or_else(|| "Unknown".into())
+                .unwrap_or_else(|| t!("agent_ui.manage_profiles_modal.unknown").into())
         });
 
         v_flex()
@@ -661,8 +673,13 @@ impl ManageProfilesModal {
             .track_focus(&self.focus_handle(cx))
             .child(ProfileModalHeader::new(
                 match &base_profile_name {
-                    Some(base_profile) => format!("Fork {base_profile}"),
-                    None => "New Profile".into(),
+                    // 显式 SharedString::from 消除泛型 into 的目标类型歧义(E0283)
+                    // Explicit SharedString::from disambiguates the generic into() target (E0283).
+                    Some(base_profile) => SharedString::from(t!(
+                        "agent_ui.manage_profiles_modal.fork_profile_title",
+                        profile = base_profile
+                    )),
+                    None => SharedString::from(t!("agent_ui.manage_profiles_modal.new_profile")),
                 },
                 match base_profile_name {
                     Some(_) => Some(IconName::Scissors),
@@ -685,7 +702,7 @@ impl ManageProfilesModal {
             .profiles
             .get(&mode.profile_id)
             .map(|profile| profile.name.clone())
-            .unwrap_or_else(|| "Unknown".into());
+            .unwrap_or_else(|| t!("agent_ui.manage_profiles_modal.unknown").into());
 
         let icon = match mode.profile_id.as_str() {
             "write" => IconName::Pencil,
@@ -726,7 +743,9 @@ impl ManageProfilesModal {
                                                 .size(IconSize::Small)
                                                 .color(Color::Muted),
                                         )
-                                        .child(Label::new("Fork Profile"))
+                                        .child(Label::new(t!(
+                                            "agent_ui.manage_profiles_modal.fork_profile"
+                                        )))
                                         .on_click({
                                             let profile_id = mode.profile_id.clone();
                                             cx.listener(move |this, _, window, cx| {
@@ -767,7 +786,9 @@ impl ManageProfilesModal {
                                                 .size(IconSize::Small)
                                                 .color(Color::Muted),
                                         )
-                                        .child(Label::new("Configure Default Model"))
+                                        .child(Label::new(t!(
+                                            "agent_ui.manage_profiles_modal.configure_default_model"
+                                        )))
                                         .on_click({
                                             let profile_id = mode.profile_id.clone();
                                             cx.listener(move |this, _, window, cx| {
@@ -808,7 +829,9 @@ impl ManageProfilesModal {
                                                 .size(IconSize::Small)
                                                 .color(Color::Muted),
                                         )
-                                        .child(Label::new("Configure Built-in Tools"))
+                                        .child(Label::new(t!(
+                                            "agent_ui.manage_profiles_modal.configure_builtin_tools"
+                                        )))
                                         .on_click({
                                             let profile_id = mode.profile_id.clone();
                                             cx.listener(move |this, _, window, cx| {
@@ -845,7 +868,9 @@ impl ManageProfilesModal {
                                                 .size(IconSize::Small)
                                                 .color(Color::Muted),
                                         )
-                                        .child(Label::new("Configure MCP Tools"))
+                                        .child(Label::new(t!(
+                                            "agent_ui.manage_profiles_modal.configure_mcp_tools"
+                                        )))
                                         .on_click({
                                             let profile_id = mode.profile_id.clone();
                                             cx.listener(move |this, _, window, cx| {
@@ -882,7 +907,12 @@ impl ManageProfilesModal {
                                                 .size(IconSize::Small)
                                                 .color(Color::Error),
                                         )
-                                        .child(Label::new("Delete Profile").color(Color::Error))
+                                        .child(
+                                            Label::new(t!(
+                                                "agent_ui.manage_profiles_modal.delete_profile"
+                                            ))
+                                            .color(Color::Error),
+                                        )
                                         .disabled(builtin_profiles::is_builtin(&mode.profile_id))
                                         .on_click({
                                             let profile_id = mode.profile_id.clone();
@@ -916,7 +946,9 @@ impl ManageProfilesModal {
                                                 .size(IconSize::Small)
                                                 .color(Color::Muted),
                                         )
-                                        .child(Label::new("Go Back"))
+                                        .child(Label::new(t!(
+                                            "agent_ui.manage_profiles_modal.go_back"
+                                        )))
                                         .end_slot(
                                             div().child(
                                                 KeyBinding::for_action_in(
@@ -968,7 +1000,7 @@ impl Render for ManageProfilesModal {
                             .size(IconSize::Small)
                             .color(Color::Muted),
                     )
-                    .child(Label::new("Go Back"))
+                    .child(Label::new(t!("agent_ui.manage_profiles_modal.go_back")))
                     .end_slot(
                         div().child(
                             KeyBinding::for_action_in(&menu::Cancel, &self.focus_handle, cx)
@@ -1011,7 +1043,7 @@ impl Render for ManageProfilesModal {
                         .profiles
                         .get(profile_id)
                         .map(|profile| profile.name.clone())
-                        .unwrap_or_else(|| "Unknown".into());
+                        .unwrap_or_else(|| t!("agent_ui.manage_profiles_modal.unknown").into());
 
                     v_flex()
                         .pb_1()
@@ -1034,7 +1066,7 @@ impl Render for ManageProfilesModal {
                         .profiles
                         .get(profile_id)
                         .map(|profile| profile.name.clone())
-                        .unwrap_or_else(|| "Unknown".into());
+                        .unwrap_or_else(|| t!("agent_ui.manage_profiles_modal.unknown").into());
 
                     v_flex()
                         .pb_1()
@@ -1057,7 +1089,7 @@ impl Render for ManageProfilesModal {
                         .profiles
                         .get(profile_id)
                         .map(|profile| profile.name.clone())
-                        .unwrap_or_else(|| "Unknown".into());
+                        .unwrap_or_else(|| t!("agent_ui.manage_profiles_modal.unknown").into());
 
                     v_flex()
                         .pb_1()

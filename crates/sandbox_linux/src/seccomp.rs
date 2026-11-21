@@ -36,6 +36,8 @@ const FIRST_UNREVIEWED_SYSCALL: u32 = 463;
 const AUDIT_ARCH: u32 = 0xc000_003e;
 #[cfg(target_arch = "aarch64")]
 const AUDIT_ARCH: u32 = 0xc000_00b7;
+#[cfg(target_arch = "loongarch64")]
+const AUDIT_ARCH: u32 = 0xc000_0102;
 #[cfg(target_arch = "x86_64")]
 const X32_SYSCALL_BIT: u32 = 0x4000_0000;
 

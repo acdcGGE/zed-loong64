@@ -44,6 +44,7 @@ use util::paths::PathStyle;
 use util::{ResultExt, debug_panic};
 use workspace::{CollaboratorId, Workspace};
 use zed_actions::agent::{Chat, PasteRaw};
+use zed_i18n::t;
 
 #[derive(Default)]
 pub struct SessionCapabilities {
@@ -344,7 +345,7 @@ async fn resolve_pasted_context_items(
 ) -> (Vec<ResolvedPastedContextItem>, Vec<Entity<Worktree>>) {
     let mut items = Vec::new();
     let mut added_worktrees = Vec::new();
-    let default_image_name: SharedString = "Image".into();
+    let default_image_name: SharedString = t!("agent_ui.message_editor.image").into();
     // A bitmap and image files in the clipboard are usually the same image (e.g. a
     // screenshot saved to a temporary file), so skip image files when there's a bitmap.
     let has_clipboard_image = entries
@@ -521,14 +522,23 @@ impl MessageEditor {
                 let has_selection = editor.has_non_empty_selection(&editor.display_snapshot(cx));
 
                 Some(ContextMenu::build(window, cx, |menu, _, _| {
-                    menu.action("Cut", Box::new(editor::actions::Cut))
-                        .action_disabled_when(
-                            !has_selection,
-                            "Copy",
-                            Box::new(editor::actions::Copy),
-                        )
-                        .action("Paste", Box::new(editor::actions::Paste))
-                        .action("Paste as Plain Text", Box::new(PasteRaw))
+                    menu.action(
+                        t!("agent_ui.message_editor.cut"),
+                        Box::new(editor::actions::Cut),
+                    )
+                    .action_disabled_when(
+                        !has_selection,
+                        t!("agent_ui.message_editor.copy"),
+                        Box::new(editor::actions::Copy),
+                    )
+                    .action(
+                        t!("agent_ui.message_editor.paste"),
+                        Box::new(editor::actions::Paste),
+                    )
+                    .action(
+                        t!("agent_ui.message_editor.paste_as_plain_text"),
+                        Box::new(PasteRaw),
+                    )
                 }))
             });
 
@@ -1675,7 +1685,7 @@ impl MessageEditor {
             files: true,
             directories: false,
             multiple: true,
-            prompt: Some("Select Images".into()),
+            prompt: Some(t!("agent_ui.message_editor.select_images").into()),
         });
 
         window
@@ -1685,7 +1695,7 @@ impl MessageEditor {
                     _ => return Ok::<(), anyhow::Error>(()),
                 };
 
-                let default_image_name: SharedString = "Image".into();
+                let default_image_name: SharedString = t!("agent_ui.message_editor.image").into();
                 let images = cx
                     .background_spawn(async move {
                         paths

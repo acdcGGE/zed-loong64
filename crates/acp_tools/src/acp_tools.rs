@@ -1,4 +1,5 @@
 use std::{collections::HashSet, fmt::Display, rc::Rc, sync::Arc};
+use zed_i18n::t;
 
 use agent_client_protocol::{Error, v1::schema::RequestId};
 use agent_servers::{AcpDebugMessage, AcpDebugMessageContent, AcpDebugMessageDirection};
@@ -302,7 +303,7 @@ impl AcpTools {
 
         ContextMenu::build(window, cx, move |mut menu, _window, _cx| {
             if entries.is_empty() {
-                return menu.entry("No active connections", None, |_, _| {});
+                return menu.entry(t!("acp_tools.no_active_connections"), None, |_, _| {});
             }
 
             for entry in &entries {
@@ -735,7 +736,7 @@ impl Render for AcpTools {
                             .child(
                                 IconButton::new("restart_connection", IconName::RotateCw)
                                     .icon_size(IconSize::Small)
-                                    .tooltip(Tooltip::text("Restart Connection"))
+                                    .tooltip(Tooltip::text(t!("acp_tools.restart_connection")))
                                     .disabled(!can_restart)
                                     .on_click(cx.listener(|this, _, _window, cx| {
                                         this.restart_selected_connection(cx);
@@ -743,13 +744,13 @@ impl Render for AcpTools {
                             )
                             .child(
                                 CopyButton::new("copy-all-messages", copied_messages)
-                                    .tooltip_label("Copy All Messages")
+                                    .tooltip_label(t!("acp_tools.copy_all_messages"))
                                     .disabled(!has_messages),
                             )
                             .child(
                                 IconButton::new("clear_messages", IconName::Trash)
                                     .icon_size(IconSize::Small)
-                                    .tooltip(Tooltip::text("Clear Messages"))
+                                    .tooltip(Tooltip::text(t!("acp_tools.clear_messages")))
                                     .disabled(!has_messages)
                                     .on_click(cx.listener(|this, _, _window, cx| {
                                         this.clear_messages(cx);

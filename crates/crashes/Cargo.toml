@@ -8,12 +8,15 @@ license = "GPL-3.0-or-later"
 [dependencies]
 crash-handler.workspace = true
 log.workspace = true
-minidumper.workspace = true
 parking_lot.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 system_specs.workspace = true
 zstd.workspace = true
+
+# `minidumper` pulls in `minidump-writer`, which has no loongarch64 support.
+[target.'cfg(not(target_arch = "loongarch64"))'.dependencies]
+minidumper.workspace = true
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 async-process.workspace = true

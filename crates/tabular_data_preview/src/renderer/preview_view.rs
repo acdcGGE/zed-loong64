@@ -1,8 +1,7 @@
 use ui::{SpinnerLabel, div, prelude::*};
+use zed_i18n::t;
 
 use crate::TableView;
-
-use super::settings::settings_popover_menu;
 
 impl Render for TableView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -25,20 +24,12 @@ impl Render for TableView {
             .on_action(cx.listener(Self::move_focused_cell))
             .on_action(cx.listener(Self::extend_selection))
             .on_action(cx.listener(Self::clear_selection))
+            .child(self.render_settings_panel(window, cx))
             .child({
                 let is_loading = self.is_loading;
                 if is_loading || self.engine.contents.number_of_cols == 0 {
                     v_flex()
                         .size_full()
-                        .child(
-                            // Settings stay reachable even before the table (and its own
-                            // header-embedded settings trigger) has anything to render.
-                            h_flex()
-                                .w_full()
-                                .justify_end()
-                                .p_1()
-                                .child(settings_popover_menu(cx.entity())),
-                        )
                         .child(
                             div()
                                 .flex()
@@ -53,10 +44,12 @@ impl Render for TableView {
                                         h_flex()
                                             .gap_2()
                                             .child(SpinnerLabel::new())
-                                            .child("Loading…"),
+                                            .child(t!("csv_preview.empty_state.loading")),
                                     )
                                 })
-                                .when(!is_loading, |div| div.child("No data to display")),
+                                .when(!is_loading, |div| {
+                                    div.child(t!("csv_preview.empty_state.no_content"))
+                                }),
                         )
                         .into_any_element()
                 } else {

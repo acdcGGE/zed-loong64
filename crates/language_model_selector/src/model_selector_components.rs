@@ -1,3 +1,4 @@
+use zed_i18n::t;
 use gpui::{Action, ClickEvent, FocusHandle, prelude::*};
 use language_model::DisabledReason;
 use ui::{Chip, ElevationIndex, KeyBinding, ListItem, ListItemSpacing, Tooltip, prelude::*};
@@ -162,7 +163,7 @@ impl RenderOnce for ModelSelectorListItem {
                             .when(is_disabled, |this| this.color(Color::Disabled))
                             .truncate(),
                     )
-                    .when(self.is_latest, |parent| parent.child(Chip::new("Latest")))
+                    .when(self.is_latest, |parent| parent.child(Chip::new(t!("agent_ui.model_selector.latest"))))
                     .when_some(self.cost_info, |this, cost_info| {
                         let tooltip_text = if cost_info.ends_with('×') {
                             format!("Cost Multiplier: {}", cost_info)
@@ -236,7 +237,7 @@ impl RenderOnce for ModelSelectorFooter {
             .border_t_1()
             .border_color(cx.theme().colors().border_variant)
             .child(
-                Button::new("configure", "Configure")
+                Button::new("configure", t!("agent_ui.model_selector.configure"))
                     .full_width()
                     .style(ButtonStyle::Outlined)
                     .key_binding(
@@ -276,7 +277,7 @@ impl RenderOnce for ModelSelectorTooltip {
                 h_flex()
                     .gap_2()
                     .justify_between()
-                    .child(Label::new("Change Model"))
+                    .child(Label::new(t!("agent_ui.model_selector.change_model")))
                     .child(KeyBinding::for_action(&ToggleModelSelector, cx)),
             )
             .when(self.show_cycle_row, |this| {
@@ -287,7 +288,7 @@ impl RenderOnce for ModelSelectorTooltip {
                         .border_t_1()
                         .border_color(cx.theme().colors().border_variant)
                         .justify_between()
-                        .child(Label::new("Cycle Favorite Models"))
+                        .child(Label::new(t!("agent_ui.model_selector.cycle_favorite_models")))
                         .child(KeyBinding::for_action(&CycleFavoriteModels, cx)),
                 )
             })

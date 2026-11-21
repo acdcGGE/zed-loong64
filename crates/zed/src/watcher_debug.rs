@@ -16,6 +16,7 @@ use std::{
 use ui::{Tab, TabBar, TabPosition, prelude::*};
 use util::ResultExt;
 use workspace::AppState;
+use zed_i18n::t;
 
 actions!(
     dev,
@@ -55,7 +56,7 @@ pub fn init(app_state: Arc<AppState>, cx: &mut App) {
                 ..Default::default()
             },
             |window, cx| {
-                window.set_window_title("Debug Filesystem Watching");
+                window.set_window_title(&t!("zed.watcher_debug.window_title"));
                 let view = cx.new(|cx| WatcherDebug::new(app_state, window, cx));
                 window.activate_window();
                 view.focus_handle(cx).focus(window, cx);
@@ -94,29 +95,27 @@ enum WatcherTab {
 impl WatcherTab {
     const ALL: [Self; 3] = [Self::RawEvents, Self::WatchRoots, Self::ScanExclusions];
 
-    fn label(self) -> &'static str {
+    fn label(self) -> SharedString {
         match self {
-            Self::RawEvents => "Raw Events",
-            Self::WatchRoots => "Watch Roots",
-            Self::ScanExclusions => "Scan Exclusions",
+            Self::RawEvents => t!("zed.watcher_debug.tab_raw_events").into(),
+            Self::WatchRoots => t!("zed.watcher_debug.tab_watch_roots").into(),
+            Self::ScanExclusions => t!("zed.watcher_debug.tab_scan_exclusions").into(),
         }
     }
 
-    fn description(self) -> &'static str {
+    fn description(self) -> SharedString {
         match self {
-            Self::RawEvents => {
-                "Raw watcher notifications, oldest first. Times are shown in your local time zone."
-            }
-            Self::WatchRoots => "Live native and polling watch roots across the app.",
-            Self::ScanExclusions => EXCLUSION_SCOPE,
+            Self::RawEvents => t!("zed.watcher_debug.raw_events_hint").into(),
+            Self::WatchRoots => t!("zed.watcher_debug.watch_roots_hint").into(),
+            Self::ScanExclusions => t!("zed.watcher_debug.exclusion_scope").into(),
         }
     }
 
-    fn empty_message(self) -> &'static str {
+    fn empty_message(self) -> SharedString {
         match self {
-            Self::RawEvents => "Waiting for filesystem watcher events…",
-            Self::WatchRoots => "No watch roots.",
-            Self::ScanExclusions => "No local projects are open.",
+            Self::RawEvents => t!("zed.watcher_debug.waiting_events").into(),
+            Self::WatchRoots => t!("zed.watcher_debug.no_watch_roots").into(),
+            Self::ScanExclusions => t!("zed.watcher_debug.no_local_projects").into(),
         }
     }
 }
@@ -131,8 +130,9 @@ fn format_event(event: &WatchDiagnosticEvent) -> SharedString {
                 .to_string()
         })
         .unwrap_or_else(|| "--:--:--.---".into());
+    let rescan_label = t!("zed.watcher_debug.rescan");
     let name = if event.rescan {
-        "Rescan"
+        rescan_label.as_ref()
     } else {
         event.event_kind.as_deref().unwrap_or(&event.operation)
     };
@@ -164,7 +164,7 @@ fn create_editor(
         editor.hide_minimap_by_default(window, cx);
         editor.set_show_edit_predictions(Some(false), window, cx);
         editor.set_soft_wrap_mode(SoftWrap::None, cx);
-        editor.set_placeholder_text(tab.empty_message(), window, cx);
+        editor.set_placeholder_text(&tab.empty_message(), window, cx);
         editor
     })
 }
@@ -511,7 +511,7 @@ impl Render for WatcherDebug {
                     .bg(cx.theme().colors().elevated_surface_background)
                     .p(DynamicSpacing::Base04.rems(cx))
                     .child(
-                        Button::new("save-watcher-json", "Export as JSON")
+                        Button::new("save-watcher-json", t!("zed.watcher_debug.export_json"))
                             .disabled(self.saving || self.recording.is_none())
                             .on_click(cx.listener(|this, _, _, cx| this.save(cx))),
                     ),

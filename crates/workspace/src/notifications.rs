@@ -1,10 +1,12 @@
+use zed_i18n::t;
 use crate::{
     MultiWorkspace, SuppressNotification, Toast, Workspace, workspace_error::WorkspaceError,
 };
 use anyhow::Context as _;
 use gpui::{
     AnyView, App, AppContext as _, AsyncApp, AsyncWindowContext, ClickEvent, Context, DismissEvent,
-    Entity, EventEmitter, FocusHandle, Focusable, PromptLevel, Render, ScrollHandle, Task,
+    Entity, EventEmitter, FocusHandle, Focusable, PromptButton, PromptLevel, Render,
+    ScrollHandle, Task,
     TextStyleRefinement, UnderlineStyle, WeakEntity,
 };
 use markdown::{CopyButtonVisibility, Markdown, MarkdownElement, MarkdownStyle};
@@ -375,23 +377,23 @@ impl Render for LanguageServerPrompt {
                                             "copy-description",
                                             request.message.clone(),
                                         )
-                                        .tooltip_label("Copy Description"),
+                                        .tooltip_label(t!("workspace.notifications.copy_description")),
                                     )
                                     .child(
                                         IconButton::new(close_id, close_icon)
                                             .tooltip(move |_window, cx| {
                                                 if suppress {
                                                     Tooltip::with_meta(
-                                                        "Suppress",
+                                                        t!("workspace.notifications.suppress"),
                                                         Some(&SuppressNotification),
-                                                        "Click to close",
+                                                        t!("workspace.notifications.click_to_close"),
                                                         cx,
                                                     )
                                                 } else {
                                                     Tooltip::with_meta(
-                                                        "Close",
+                                                        t!("workspace.notifications.close"),
                                                         Some(&menu::Cancel),
-                                                        "Suppress with shift-click",
+                                                        t!("workspace.notifications.suppress_shift_click"),
                                                         cx,
                                                     )
                                                 }
@@ -489,6 +491,7 @@ pub fn markdown_style(window: &Window, cx: &App) -> MarkdownStyle {
 }
 
 pub mod simple_message_notification {
+    use zed_i18n::t;
     use std::sync::Arc;
     use std::time::{Duration, Instant};
 
@@ -849,7 +852,7 @@ pub mod simple_message_notification {
                     )
                     .icon_size(IconSize::XSmall)
                     .icon_color(Color::Muted),
-                    Tooltip::text("More Options"),
+                    Tooltip::text(t!("workspace.notifications.more_options")),
                 )
                 .menu(move |window, cx| {
                     let entries = entries.clone();
@@ -1069,16 +1072,16 @@ pub mod simple_message_notification {
                             .tooltip(move |_window, cx| {
                                 if suppress {
                                     Tooltip::with_meta(
-                                        "Suppress",
+                                        t!("workspace.notifications.suppress"),
                                         Some(&SuppressNotification),
-                                        "Click to Close",
+                                        t!("workspace.notifications.click_to_close_caps"),
                                         cx,
                                     )
                                 } else if show_suppress_button {
                                     Tooltip::with_meta(
-                                        "Close",
+                                        t!("workspace.pane.close"),
                                         Some(&menu::Cancel),
-                                        "Shift-click to Suppress",
+                                        t!("workspace.notifications.shift_click_to_suppress"),
                                         cx,
                                     )
                                 } else {
@@ -1300,7 +1303,7 @@ pub mod simple_message_notification {
                     found [\"editor::Apply\"].\n\
                     • In binding \"ctrl-shift-r\", action \"editor::Reload\" is not registered.";
                 MessageNotification::new(long_message, cx)
-                    .primary_message("Open Keymap File")
+                    .primary_message(t!("zed.notification.open_keymap_file"))
                     .primary_icon(IconName::Settings)
             });
 
@@ -1387,7 +1390,7 @@ pub mod simple_message_notification {
                 }
                 fn primary_action(&self) -> ErrorAction {
                     ErrorAction::link(
-                        "See Docs",
+                        t!("git_ui.git_panel.see_docs"),
                         "https://zed.dev/docs/linux#i-cant-open-any-files",
                     )
                 }
@@ -1751,7 +1754,7 @@ where
                         display.push('.');
                     }
                     let detail = f(err, window, cx).unwrap_or(display);
-                    window.prompt(PromptLevel::Critical, &msg, Some(&detail), &["OK"], cx)
+                    window.prompt(PromptLevel::Critical, &msg, Some(&detail), &[PromptButton::new(t!("workspace.notifications.ok"))], cx)
                 }) {
                     prompt.await.ok();
                 }
@@ -2020,7 +2023,7 @@ mod tests {
 
         workspace.update(cx, |workspace, cx| workspace.clear_all_notifications(cx));
         let actions = vec![MessageActionItem {
-            title: String::from("Retry"),
+            title: String::from(t!("agent_ui.agent_registry_ui.retry")),
             properties: HashMap::default(),
         }];
         let mut expected_ids = Vec::new();

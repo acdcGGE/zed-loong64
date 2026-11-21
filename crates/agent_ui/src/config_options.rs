@@ -1,3 +1,4 @@
+use zed_i18n::t;
 use std::{rc::Rc, sync::Arc};
 
 use acp_thread::AgentSessionConfigOptions;
@@ -561,7 +562,7 @@ impl Render for ConfigOptionSelector {
             let value = match &option.kind {
                 acp::SessionConfigKind::Select(select) => {
                     find_option_name(&select.options, &select.current_value)
-                        .unwrap_or_else(|| "Unknown".to_string())
+                        .unwrap_or_else(|| t!("agent_ui.mode_selector.unknown").to_string())
                 }
                 acp::SessionConfigKind::Boolean(boolean) => {
                     format!(
@@ -627,33 +628,33 @@ impl Render for ConfigOptionSelector {
                             acp::SessionConfigOptionCategory::Mode => {
                                 content = content
                                     .child(action_tooltip_container(
-                                        "Change Mode",
+                                        t!("agent_ui.mode_selector.change_mode").as_ref(),
                                         KeyBinding::for_action(&ToggleProfileSelector, cx),
                                     ))
                                     .child(action_tooltip_container(
-                                        "Cycle Through Modes",
+                                        t!("agent_ui.mode_selector.cycle_through_modes").as_ref(),
                                         KeyBinding::for_action(&CycleModeSelector, cx),
                                     ));
                             }
                             acp::SessionConfigOptionCategory::Model => {
                                 content = content
                                     .child(action_tooltip_container(
-                                        "Change Model",
+                                        t!("agent_ui.model_selector.change_model").as_ref(),
                                         KeyBinding::for_action(&ToggleModelSelector, cx),
                                     ))
                                     .child(action_tooltip_container(
-                                        "Cycle Favorite Models",
+                                        t!("agent_ui.model_selector.cycle_favorite_models").as_ref(),
                                         KeyBinding::for_action(&CycleFavoriteModels, cx),
                                     ));
                             }
                             acp::SessionConfigOptionCategory::ThoughtLevel => {
                                 content = content
                                     .child(action_tooltip_container(
-                                        "Change Thinking Effort",
+                                        t!("agent_ui.config_options.change_thinking_effort").as_ref(),
                                         KeyBinding::for_action(&ToggleThinkingEffortMenu, cx),
                                     ))
                                     .child(action_tooltip_container(
-                                        "Cycle Thinking Effort",
+                                        t!("agent_ui.config_options.cycle_thinking_effort").as_ref(),
                                         KeyBinding::for_action(&CycleThinkingEffort, cx),
                                     ));
                             }
@@ -914,7 +915,7 @@ impl PickerDelegate for ConfigOptionPickerDelegate {
     }
 
     fn placeholder_text(&self, _window: &mut Window, _cx: &mut App) -> Arc<str> {
-        "Select an option…".into()
+        t!("agent_ui.config_options.select_an_option").into()
     }
 
     fn render_header(
@@ -1296,7 +1297,7 @@ fn options_to_picker_entries(
     }
 
     if !favorite_options.is_empty() {
-        entries.push(ConfigOptionPickerEntry::Separator("Favorites".into()));
+        entries.push(ConfigOptionPickerEntry::Separator(t!("agent_ui.config_options.favorites").into()));
         for option in favorite_options {
             entries.push(ConfigOptionPickerEntry::Option(option));
         }
@@ -1306,7 +1307,7 @@ fn options_to_picker_entries(
         if let Some(option) = options.first()
             && option.group.is_none()
         {
-            entries.push(ConfigOptionPickerEntry::Separator("All Options".into()));
+            entries.push(ConfigOptionPickerEntry::Separator(t!("agent_ui.config_options.all_options").into()));
         }
     }
 
@@ -1401,7 +1402,7 @@ mod tests {
                 id,
                 id,
                 "value",
-                vec![acp::SessionConfigSelectOption::new("value", "Value")],
+                vec![acp::SessionConfigSelectOption::new("value", t!("settings_ui.external_agents_page.value_placeholder"))],
             )
             .category(category)
         };
@@ -1465,7 +1466,7 @@ mod tests {
                 "medium",
                 vec![
                     acp::SessionConfigSelectOption::new("medium", "Medium"),
-                    acp::SessionConfigSelectOption::new("high", "High"),
+                    acp::SessionConfigSelectOption::new("high", t!("language_models.deepseek.reasoning_effort_high")),
                 ],
             )
             .category(acp::SessionConfigOptionCategory::ThoughtLevel),
@@ -1524,7 +1525,7 @@ mod tests {
             acp::SessionConfigOption::boolean("web-search", "Web Search", false),
             acp::SessionConfigOption::select(
                 "scope",
-                "Scope",
+                t!("settings_ui.scope.header"),
                 "choice-0",
                 (0..PICKER_THRESHOLD)
                     .map(|index| {
@@ -1674,7 +1675,7 @@ mod tests {
 
         assert_eq!(
             option_names(fuzzy_search_options(options, "high", executor).await),
-            ["High", "Extra High", "Reasoner"],
+            [t!("language_models.deepseek.reasoning_effort_high"), "Extra High", "Reasoner"],
         );
     }
 
@@ -1830,7 +1831,7 @@ mod tests {
                 .category(acp::SessionConfigOptionCategory::Mode),
             acp::SessionConfigOption::select(
                 "mode",
-                "Mode",
+                t!("settings_ui.page_data.icon_theme_title_2"),
                 "auto",
                 vec![
                     acp::SessionConfigSelectOption::new("auto", "Auto"),
@@ -1991,7 +1992,7 @@ mod tests {
         let category = acp::SessionConfigOptionCategory::Mode;
         let unknown = acp::SessionConfigOption::new(
             "mode",
-            "Mode",
+            t!("settings_ui.page_data.icon_theme_title_2"),
             acp::SessionConfigKind::Other(acp::OtherSessionConfigKind::new(
                 "_future",
                 std::collections::BTreeMap::from([(
@@ -2023,7 +2024,7 @@ mod tests {
         config_options.replace_options(vec![
             acp::SessionConfigOption::select(
                 "mode",
-                "Mode",
+                t!("settings_ui.page_data.icon_theme_title_2"),
                 "auto",
                 vec![
                     acp::SessionConfigSelectOption::new("auto", "Auto"),
@@ -2082,7 +2083,7 @@ mod tests {
             ..TestSessionConfigOptions::new(vec![
                 acp::SessionConfigOption::select(
                     "model",
-                    "Model",
+                    t!("settings_ui.edit_prediction_provider_setup.edit_predictions_codestral_model_title"),
                     "child",
                     vec![acp::SessionConfigSelectOption::new("child", "Child model")],
                 )

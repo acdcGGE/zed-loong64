@@ -1,3 +1,4 @@
+use zed_i18n::t;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -550,7 +551,7 @@ impl Render for DeleteWorktreeTooltip {
 
         if force_delete {
             Tooltip::for_action_in(
-                "Force Delete Worktree",
+                t!("git_ui.worktree_picker.force_delete_worktree"),
                 &ForceDeleteWorktree,
                 &self.focus_handle,
                 cx,
@@ -558,7 +559,7 @@ impl Render for DeleteWorktreeTooltip {
             .into_any_element()
         } else {
             Tooltip::with_meta_in(
-                "Delete Worktree",
+                t!("git_ui.worktree_picker.delete_worktree"),
                 Some(&DeleteWorktree),
                 concat!("Hold ", ui::alt_key_name!(), " to force delete"),
                 &self.focus_handle,
@@ -738,9 +739,9 @@ impl WorktreePickerDelegate {
     fn creation_blocked_reason(&self, cx: &App) -> Option<SharedString> {
         let project = self.project.read(cx);
         if project.is_via_collab() {
-            Some("Worktree creation is not supported in collaborative projects".into())
+            Some(t!("git_ui.worktree_picker.creation_blocked_collab").into())
         } else if project.repositories(cx).is_empty() {
-            Some("Requires a Git repository in the project".into())
+            Some(t!("git_ui.worktree_picker.creation_blocked_no_repo").into())
         } else {
             None
         }
@@ -852,12 +853,16 @@ impl WorktreePickerDelegate {
                             }
                         })?;
 
+                        let force_delete_label =
+                            t!("git_ui.branch_picker.force_delete");
+                        let cancel_label =
+                            t!("agent_ui.configure_context_server_modal.cancel");
                         let answer = cx.update(|window, cx| {
                             window.prompt(
                                 PromptLevel::Warning,
                                 &prompt_message,
                                 None,
-                                &["Force Delete", "Cancel"],
+                                &[force_delete_label.as_ref(), cancel_label.as_ref()],
                                 cx,
                             )
                         })?;
@@ -1143,9 +1148,9 @@ impl PickerDelegate for WorktreePickerDelegate {
                 == normalized_query
         });
         let create_named_disabled_reason: Option<String> = if self.has_multiple_repositories {
-            Some("Cannot create a named worktree in a project with multiple repositories".into())
+            Some(t!("git_ui.worktree_picker.named_worktree_multiple_repos").into())
         } else if has_named_worktree {
-            Some("A worktree with this name already exists".into())
+            Some(t!("git_ui.worktree_picker.named_worktree_exists").into())
         } else {
             None
         };
@@ -1179,7 +1184,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                 matches.push(WorktreeEntry::Separator);
 
                 if open_here.len() > 1 || has_open_workspaces {
-                    matches.push(WorktreeEntry::SectionHeader("This Window".into()));
+                    matches.push(WorktreeEntry::SectionHeader(t!("agent_ui.threads_archive_view.this_window").into()));
                     for worktree in open_here {
                         matches.push(WorktreeEntry::Worktree {
                             worktree,
@@ -1719,7 +1724,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                                             .with_rotate_animation(2),
                                     )
                                     .child(
-                                        Label::new("Deleting…")
+                                        Label::new(t!("git_ui.common.deleting"))
                                             .size(LabelSize::Small)
                                             .color(Color::Muted),
                                     ),
@@ -1731,7 +1736,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                             let open_in_new_window_button =
                                 IconButton::new(("open-new-window", ix), IconName::ArrowUpRight)
                                     .icon_size(IconSize::Small)
-                                    .tooltip(Tooltip::text("Open in New Window"))
+                                    .tooltip(Tooltip::text(t!("git_ui.worktree_picker.open_in_new_window")))
                                     .on_click(cx.listener(move |picker, _, window, cx| {
                                         if picker.delegate.worktree_row_index(&open_path).is_none()
                                             || picker
@@ -1801,7 +1806,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                                                 IconName::Close,
                                             )
                                             .icon_size(IconSize::Small)
-                                            .tooltip(Tooltip::text("Remove Worktree from Window"))
+                                            .tooltip(Tooltip::text(t!("git_ui.worktree_picker.remove_worktree_from_window")))
                                             .on_click(
                                                 cx.listener(move |picker, _, window, cx| {
                                                     picker.delegate.remove_worktree_from_window(
@@ -1867,7 +1872,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                 .icon_size(IconSize::Small)
                 .tooltip(move |_window, cx| {
                     Tooltip::for_action_in(
-                        "Automate Worktree Setup",
+                        t!("git_ui.worktree_picker.automate_worktree_setup"),
                         &OpenWorktreeSetupTasks,
                         &focus_handle,
                         cx,
@@ -1922,7 +1927,7 @@ impl PickerDelegate for WorktreePickerDelegate {
             .border_t_1()
             .border_color(cx.theme().colors().border_variant)
             .child(
-                Button::new("configure-worktree-tasks", "Automate Setup")
+                Button::new("configure-worktree-tasks", t!("git_ui.worktree_picker.automate_setup"))
                     .key_binding(
                         KeyBinding::for_action_in(&OpenWorktreeSetupTasks, &focus_handle, cx)
                             .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -1936,7 +1941,7 @@ impl PickerDelegate for WorktreePickerDelegate {
             Some(
                 footer
                     .child(
-                        Button::new("create-worktree", "Create")
+                        Button::new("create-worktree", t!("git_ui.common.create"))
                             .key_binding(
                                 KeyBinding::for_action_in(&menu::Confirm, &focus_handle, cx)
                                     .map(|kb| kb.size(rems_from_px(12_f32))),
@@ -1955,7 +1960,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                             .gap_0p5()
                             .when(is_deleting, |this| {
                                 this.child(
-                                    Button::new("delete-worktree", "Deleting…")
+                                    Button::new("delete-worktree", t!("git_ui.common.deleting"))
                                         .loading(true)
                                         .disabled(true),
                                 )
@@ -1963,7 +1968,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                             .when(!is_deleting && can_delete, |this| {
                                 let focus_handle = focus_handle.clone();
                                 this.child(
-                                    Button::new("delete-worktree", "Delete")
+                                    Button::new("delete-worktree", t!("collab_ui.collab_panel.delete"))
                                         .key_binding(
                                             KeyBinding::for_action_in(
                                                 &DeleteWorktree,
@@ -1980,7 +1985,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                             .when(!is_deleting && !is_current, |this| {
                                 let focus_handle = focus_handle.clone();
                                 this.child(
-                                    Button::new("open-in-new-window", "Open in New Window")
+                                    Button::new("open-in-new-window", t!("git_ui.worktree_picker.open_in_new_window"))
                                         .key_binding(
                                             KeyBinding::for_action_in(
                                                 &menu::SecondaryConfirm,
@@ -1999,7 +2004,7 @@ impl PickerDelegate for WorktreePickerDelegate {
                             })
                             .when(!is_deleting, |this| {
                                 this.child(
-                                    Button::new("open-worktree", "Open")
+                                    Button::new("open-worktree", t!("agent_ui.elicitation.open"))
                                         .key_binding(
                                             KeyBinding::for_action_in(
                                                 &menu::Confirm,
@@ -2119,7 +2124,12 @@ pub async fn open_remote_worktree(
             window,
             cx,
         )
-        .prompt_err("Failed to connect", window, cx, |_, _, _| None)
+        .prompt_err(
+            t!("git_ui.worktree_picker.connect_failed").as_ref(),
+            window,
+            cx,
+            |_, _, _| None,
+        )
     })?;
 
     let session = connect_task.await;
@@ -2651,7 +2661,7 @@ mod tests {
             "pending delete state should clear while waiting for force-delete confirmation"
         );
 
-        cx.simulate_prompt_answer("Force Delete");
+        cx.simulate_prompt_answer(t!("git_ui.branch_picker.force_delete"));
         cx.run_until_parked();
 
         assert!(!cx.has_pending_prompt());
@@ -2695,7 +2705,7 @@ mod tests {
         assert!(cx.has_pending_prompt());
         assert!(deleting_worktree_paths(&worktree_picker, &mut cx).is_empty());
 
-        cx.simulate_prompt_answer("Cancel");
+        cx.simulate_prompt_answer(t!("agent_ui.configure_context_server_modal.cancel"));
         cx.run_until_parked();
 
         assert!(!cx.has_pending_prompt());
@@ -2843,7 +2853,7 @@ mod tests {
                 let header_index = matches
                     .iter()
                     .position(|entry| {
-                        matches!(entry, WorktreeEntry::SectionHeader(label) if label.as_ref() == "This Window")
+                        matches!(entry, WorktreeEntry::SectionHeader(label) if label.as_ref() == t!("agent_ui.threads_archive_view.this_window"))
                     })
                     .expect("section header should be present when multiple worktrees are open");
 
