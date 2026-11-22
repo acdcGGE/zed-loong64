@@ -1,6 +1,8 @@
-# Zed 简体中文版（1.31.0）
+# Zed 简体中文版（开发快照，Cargo 版本 1.31.0）
 
-基于 [Zed](https://zed.dev) 1.31.0，汉化词条来自 [ReachForStar/zed-ZH_CN](https://github.com/ReachForStar/zed-ZH_CN)，覆盖 70 个模块、4060 条词条（设置页、命令面板、项目面板、Git 面板、欢迎页、智能体等）。
+> 版本说明：源码为上游 main 分支快照 `2f808b3`（2026-11-21），`crates/zed/Cargo.toml` 声明 1.31.0，属开发版本；官方最新稳定版为 1.29.3，预发布为 1.30.2-pre。包名沿用 1.31.0。
+
+基于 [Zed](https://zed.dev) 该快照，汉化词条来自 [ReachForStar/zed-ZH_CN](https://github.com/ReachForStar/zed-ZH_CN)，覆盖 70 个模块、4060 条词条（设置页、命令面板、项目面板、Git 面板、欢迎页、智能体等）。
 
 ## 安装
 
