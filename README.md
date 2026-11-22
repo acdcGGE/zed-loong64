@@ -8,7 +8,13 @@
 sudo pacman -U zed-zhcn-1.31.0-1-x86_64.pkg.tar.zst   # 或 ...-loong64...
 ```
 
-包名 `zed-zhcn`，`provides=zed`，与 `zed`、`zed-loc`、`zed-editor` 冲突。
+Debian / Ubuntu：
+
+```bash
+sudo apt install ./zed-zhcn_1.31.0-1_amd64.deb        # loong64 版改文件名
+```
+
+包名 `zed-zhcn`，`provides: zed`，与 `zed`、`zed-loc`、`zed-editor` 冲突。
 
 另附未汉化原版包 `zed-1.31.0-1-loong64.pkg.tar.zst`（包名 `zed`），与汉化版互斥，二者择一安装。
 
